@@ -45,6 +45,7 @@
 #include "sta/LibertyClass.hh"
 #include "sta/NetworkClass.hh"
 #include "utl/Logger.h"
+#include "BufferedTree.h"
 
 namespace rsz {
 
