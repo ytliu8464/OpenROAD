@@ -54,6 +54,9 @@ std::string bufferedTreeNodeTypeToString(BufferedTreeNodeType type);
 struct BufferedTreeNode;
 using BufferedTreeNodePtr = std::shared_ptr<BufferedTreeNode>;
 
+class BufferedTree;
+using BufferedTreePtr = std::shared_ptr<BufferedTree>;
+
 struct BufferedTreeNode {
   BufferedTreeNodeType node_type;
   int x;
@@ -62,9 +65,9 @@ struct BufferedTreeNode {
   float output_slew;
   float input_cap;
   float output_cap;
+  float max_output_cap;
   int fanout;
   std::string pin_name;
-  std::string instance_name;
   std::vector<BufferedTreeNodePtr> children;
   BufferedTreeNodePtr parent;
   int node_id;
@@ -76,6 +79,7 @@ class BufferedTree
   public:
     // Default constructor
     BufferedTree() = default;
+    BufferedTree(sta::Net* net) : net_(net) { }
 
     void setRoot(BufferedTreeNodePtr node);
     BufferedTreeNodePtr getRoot() const;

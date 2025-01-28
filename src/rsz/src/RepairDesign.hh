@@ -1,6 +1,6 @@
 /////////////////////////////////////////////////////////////////////////////
 //
-// Copyright (c) 2022, The Regents of the University of California
+// Copyright (c) 2025, The Regents of the University of California
 // All rights reserved.
 //
 // BSD 3-Clause License
@@ -35,6 +35,7 @@
 
 #pragma once
 
+#include <string>
 #include "BufferedNet.hh"
 #include "PreChecks.hh"
 #include "db_sta/dbSta.hh"
@@ -91,6 +92,8 @@ class RepairDesign : dbStaState
                     double cap_margin,
                     double buffer_gain,
                     bool verbose);
+  // Update since 2025/01/27.
+  // Defualt for store_buffered_trees_flag is false.
   void repairDesign(double max_wire_length,  // zero for none (meters)
                     double slew_margin,
                     double cap_margin,
@@ -100,7 +103,8 @@ class RepairDesign : dbStaState
                     int& slew_violations,
                     int& cap_violations,
                     int& fanout_violations,
-                    int& length_violations);
+                    int& length_violations,
+                    bool store_buffered_trees_flag = false);
   int insertedBufferCount() const { return inserted_buffer_count_; }
   void repairNet(Net* net,
                  double max_wire_length,
@@ -108,6 +112,23 @@ class RepairDesign : dbStaState
                  double cap_margin);
   void repairClkNets(double max_wire_length);
   void repairClkInverters();
+
+  // Update since 2025/01/27
+  void initBufferedTrees();
+  void writeBufferedTrees(const std::string& file_name);
+
+  // Update since 2025/01/27
+  void repairDesign_update(
+    double max_wire_length,  // zero for none (meters)
+    double slew_margin, // zero for default
+    double cap_margin, // zero for default
+    double buffer_gain, // zero for default
+    bool verbose,
+    int& repaired_net_count,
+    int& slew_violations,
+    int& cap_violations,
+    int& fanout_violations,
+    int& length_violations);
 
  protected:
   void init();
@@ -274,11 +295,36 @@ class RepairDesign : dbStaState
   const MinMax* max_ = MinMax::max();
 
   int print_interval_ = 0;
-
+  
   // Elmore factor for 20-80% slew thresholds.
   static constexpr float elmore_skew_factor_ = 1.39;
   static constexpr int min_print_interval_ = 10;
   static constexpr int max_print_interval_ = 100;
+
+ 
+  void repairNet_update(Net* net,
+                 const Pin* drvr_pin,
+                 Vertex* drvr,
+                 bool check_slew,
+                 bool check_cap,
+                 bool check_fanout,
+                 int max_length,  // dbu
+                 bool resize_drvr,
+                 int& repaired_net_count,
+                 int& slew_violations,
+                 int& cap_violations,
+                 int& fanout_violations,
+                 int& length_violations);
+
+  // We do not consider the max wirelength constraint
+  // when we do decide if the net is needed to be repaired.
+  float getOutputCap(const Pin* drvr_pin, float& max_cap);
+  void getSlew(const Pin* drvr_pin, float& max_cap,
+    float &output_slew, float &input_slew);
+  void createPreBufferedTree(Net* net, const Pin* drvr_pin, float max_cap);
+
+  std::vector<BufferedTreePtr> buffered_trees_pre_;
+  std::vector<BufferedTreePtr> buffered_trees_post_;
 };
 
 }  // namespace rsz

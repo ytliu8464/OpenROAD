@@ -1541,6 +1541,11 @@ void Resizer::findResizeSlacks(bool run_journal_restore)
   estimateWireParasitics();
   int repaired_net_count, slew_violations, cap_violations;
   int fanout_violations, length_violations;
+  // update since 2025/01/27
+  logger_->report("[INFO] Virtual Buffering Starts ....");  
+  // The following flag is just for extracting MLBuf dataset
+  bool store_buffered_trees_flag = true;
+  logger_->report("[INFO] store_buffered_trees_flag = {}", store_buffered_trees_flag);
   repair_design_->repairDesign(max_wire_length_,
                                0.0,
                                0.0,
@@ -1550,7 +1555,9 @@ void Resizer::findResizeSlacks(bool run_journal_restore)
                                slew_violations,
                                cap_violations,
                                fanout_violations,
-                               length_violations);
+                               length_violations, 
+                               store_buffered_trees_flag);
+  logger_->report("[INFO] Virtual Buffering Ends ....");
   findResizeSlacks1();
   if (run_journal_restore)
     journalRestore(resize_count_,
