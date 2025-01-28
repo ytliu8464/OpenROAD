@@ -59,8 +59,8 @@ using BufferedTreePtr = std::shared_ptr<BufferedTree>;
 
 struct BufferedTreeNode {
   BufferedTreeNodeType node_type;
-  int x;
-  int y;
+  float x;
+  float y;
   float input_slew;
   float output_slew;
   float input_cap;

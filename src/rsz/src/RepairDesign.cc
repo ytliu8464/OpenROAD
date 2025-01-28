@@ -2348,13 +2348,35 @@ void RepairDesign::createPreBufferedTree(
   float max_cap)
 {
   BufferedTreePtr tree = std::make_shared<BufferedTree>(net);
+  /*
+  // Check the locations for all the pins
+  odb::dbNet* db_net;
+  db_net = db_network_->flatNet(drvr_pin);
+  Net* net_new
+      = network_->isTopLevelPort(drvr_pin)
+            ? network_->net(network_->term(drvr_pin))
+            // original code, could retrun a mod net  : network_->net(drvr_pin);
+            : db_network_->dbToSta(db_net);
+
+  NetConnectedPinIterator* pin_iter = network_->connectedPinIterator(net_new);
+  std::map<std::string, Point> pin_locs;
+  while (pin_iter->hasNext()) {
+    const Pin* pin = pin_iter->next();
+    Point loc = db_network_->location(pin);
+    pin_locs[sdc_network_->pathName(pin)] = loc;
+    std::cout << "Pin: " << sdc_network_->pathName(pin) << " Location: " << loc.getX() << " " << loc.getY() << std::endl;
+  }
+  */
 
   // create the root node
   BufferedTreeNodePtr root = std::make_shared<BufferedTreeNode>();
   root->pin_name = sdc_network_->pathName(drvr_pin);
   Point drvr_loc = db_network_->location(drvr_pin);
-  root->x = dbuToMeters(drvr_loc.getX());
-  root->y = dbuToMeters(drvr_loc.getY());
+  //auto drvr_loc = pin_locs[root->pin_name];
+  //std::cout << "Driver Pin: " << root->pin_name << std::endl;
+  //std::cout << "Driver Location: " << drvr_loc.getX() << " " << drvr_loc.getY() << std::endl;
+  root->x = dbuToMeters(drvr_loc.getX()) * 1e6;
+  root->y = dbuToMeters(drvr_loc.getY()) * 1e6;
   // Check Capacitance
   root->output_cap = getOutputCap(drvr_pin, max_cap);
   root->input_cap = -1.0;
@@ -2368,7 +2390,11 @@ void RepairDesign::createPreBufferedTree(
   root->max_output_cap = max_cap;
   root->parent = nullptr;
   root->node_type = BufferedTreeNodeType::DRIVER;
-
+ 
+  float slew1, slew_slack1, max_slew1;
+  const Corner* corner1;
+  // Check slew at the driver.
+  checkSlew(drvr_pin, slew1, max_slew1, slew_slack1, corner1);
 
   // Check all the sink pins
   NetConnectedPinIterator* pin_iter = network_->connectedPinIterator(net);
@@ -2378,12 +2404,12 @@ void RepairDesign::createPreBufferedTree(
       BufferedTreeNodePtr sink = std::make_shared<BufferedTreeNode>();
       sink->pin_name = sdc_network_->pathName(pin);
       Point sink_loc = db_network_->location(pin);
-      sink->x = dbuToMeters(sink_loc.getX());
-      sink->y = dbuToMeters(sink_loc.getY());
+      sink->x = dbuToMeters(sink_loc.getX()) * 1e6;
+      sink->y = dbuToMeters(sink_loc.getY()) * 1e6;
       // Check Capacitance
       sink->output_cap = -1.0;
       LibertyPort* input_port = network_->libertyPort(pin);
-      sink->input_cap = resizer_->portCapacitance(input_port, corner_);
+      sink->input_cap = resizer_->portCapacitance(input_port, corner1);
       // check slew
       sink->output_slew = -1.0;
       sink->input_slew = input_slew;
@@ -2392,13 +2418,112 @@ void RepairDesign::createPreBufferedTree(
       sink->node_type = BufferedTreeNodeType::SINK;
       root->children.push_back(sink);
     }
-  }  
+  } 
 
-
+  root->fanout = root->children.size();
   tree->setRoot(root);
   buffered_trees_pre_.push_back(tree);
-
 }
+
+// ----------------------------------------------------------------------------
+// BufferedTreeNode
+// ----------------------------------------------------------------------------
+
+std::string bufferedTreeNodeTypeToString(BufferedTreeNodeType type)
+{
+  switch (type) {
+    case BufferedTreeNodeType::DRIVER:
+      return "Driver";
+    case BufferedTreeNodeType::SINK:
+      return "Sink";
+    case BufferedTreeNodeType::BUFFER:
+      return "Buffer";
+  }
+}
+
+// ----------------------------------------------------------------------------
+// BufferedTree
+// ----------------------------------------------------------------------------
+void BufferedTree::setRoot(BufferedTreeNodePtr root_node)
+{
+  root_ = std::move(root_node);
+}
+
+BufferedTreeNodePtr BufferedTree::getRoot() const
+{
+  return root_;
+}
+
+void BufferedTree::printTree() const
+{
+  // Print the tree in a pre-order DFS traversal.
+  int node_id = 0;
+  std::queue<BufferedTreeNodePtr> q;
+  q.push(root_);
+
+  while (!q.empty()) {
+    auto node = q.front();
+    q.pop();
+    node->node_id = node_id;
+    node_id++;
+    for (const auto& child : node->children) {
+      q.push(child);
+    }
+  }
+
+
+  std::cout << "Begin Tree Print\n";
+  // Reset the queue and print the nodes.
+  auto printNode = [](BufferedTreeNodePtr node) {
+    std::cout << "Node ID: " << node->node_id << "\t";
+    std::cout << "Node type: " << bufferedTreeNodeTypeToString(node->node_type) << "\t";
+    std::cout << "Pin name: " << node->pin_name << "\t";
+    std::cout << "Location: ( " << node->x << " , " << node->y << " )\t";
+    std::cout << "Input slew: " << node->input_slew << "\t";
+    std::cout << "Output slew: " << node->output_slew << "\t";
+    std::cout << "Input cap: " << node->input_cap << "\t";
+    std::cout << "Output cap: " << node->output_cap << "\t";
+    std::cout << "Fanout: " << node->fanout << "\t";
+    std::cout << "Parent: " << (node->parent ? std::to_string(node->parent->node_id) : "None") << "\t";
+    std::cout << "#Children: " << node->children.size() << "\n";
+  };
+
+  q.push(root_);
+  while (!q.empty()) {
+    auto node = q.front();
+    q.pop();
+    printNode(node);
+    for (const auto& child : node->children) {
+      q.push(child);
+    }
+  }
+
+  std::cout << "End Tree Print\n";
+}
+
+
+
+void BufferedTree::clear()
+{
+  // Disconnect all nodes from the tree.
+  std::queue<BufferedTreeNodePtr> q;
+  q.push(root_);
+  while (!q.empty()) {
+    auto node = q.front();
+    q.pop();
+
+    for (const auto& child : node->children) {
+      q.push(child);
+    }
+
+    node->children.clear();
+    node->parent = nullptr;
+  }
+  root_ = nullptr;
+}
+
+
+
 
 
 

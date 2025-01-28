@@ -142,6 +142,7 @@ static void connectedPins(const Net* net,
     const Pin* pin = pin_iter->next();
     Point loc = db_network->location(pin);
     pins.push_back({pin, loc});
+    //std::cout << "x = " << loc.x() << " y = " << loc.y() << std::endl;
   }
   delete pin_iter;
 }
