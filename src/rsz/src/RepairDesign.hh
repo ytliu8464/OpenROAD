@@ -93,6 +93,7 @@ class RepairDesign : dbStaState
                     double buffer_gain,
                     bool verbose);
   // Update since 2025/01/27.
+
   // Defualt for store_buffered_trees_flag is false.
   void repairDesign(double max_wire_length,  // zero for none (meters)
                     double slew_margin,
@@ -322,9 +323,21 @@ class RepairDesign : dbStaState
   void getSlew(const Pin* drvr_pin, float& max_cap,
     float &output_slew, float &input_slew);
   void createPreBufferedTree(Net* net, const Pin* drvr_pin, float max_cap);
+  // void createPostBufferedTree(const char* reason,
+  //                       int x,
+  //                       int y,
+  //                       LibertyCell* buffer_cell,
+  //                       // Return values.
+  //                       PinSeq& load_pins,
+  //                       float& repeater_cap,
+  //                       float& repeater_fanout,
+  //                       float& repeater_max_slew,
+  //                       Pin*& repeater_in_pin,
+  //                       Pin*& repeater_out_pin); //YL
 
   std::vector<BufferedTreePtr> buffered_trees_pre_;
   std::vector<BufferedTreePtr> buffered_trees_post_;
+  BufferedTreePtr constructed_buffered_tree_;
 };
 
 }  // namespace rsz

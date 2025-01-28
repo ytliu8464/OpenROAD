@@ -1899,6 +1899,19 @@ void RepairDesign::makeRepeater(const char* reason,
   repeater_in_pin = network_->findPin(buffer, buffer_input_port);
   repeater_out_pin = network_->findPin(buffer, buffer_output_port);
 
+  //YL
+  //update buffered tree
+  // createPostBufferedTree(const char* reason,
+  //                       int x,
+  //                       int y,
+  //                       LibertyCell* buffer_cell,
+  //                       // Return values.
+  //                       PinSeq& load_pins,
+  //                       float& repeater_cap,
+  //                       float& repeater_fanout,
+  //                       float& repeater_max_slew,
+  //                       Pin*& repeater_in_pin,
+  //                       Pin*& repeater_out_pin);
   load_pins.clear();
   load_pins.push_back(repeater_in_pin);
   repeater_cap = resizer_->portCapacitance(buffer_input_port, corner_);
@@ -2120,6 +2133,7 @@ void RepairDesign::repairDesign_update(
       float max_cap = INF;
       createPreBufferedTree(net, drvr_pin, max_cap);
       buffered_trees_pre_.back()->printTree();
+      constructed_buffered_tree_ = buffered_trees_pre_.back(); //YL
       repairNet_update(net,
                 drvr_pin,
                 drvr,
@@ -2288,6 +2302,8 @@ void RepairDesign::repairNet_update(Net* net,
       }
     }
     if (repaired_net) {
+      buffered_trees_post_.push_back(constructed_buffered_tree_);
+      buffered_trees_post_.back()->printTree();
       repaired_net_count++;
     }
   }
@@ -2396,34 +2412,66 @@ void RepairDesign::createPreBufferedTree(
   // Check slew at the driver.
   checkSlew(drvr_pin, slew1, max_slew1, slew_slack1, corner1);
 
-  // Check all the sink pins
-  NetConnectedPinIterator* pin_iter = network_->connectedPinIterator(net);
-  while (pin_iter->hasNext()) {
-    const Pin* pin = pin_iter->next();
-    if (pin != drvr_pin) {
-      BufferedTreeNodePtr sink = std::make_shared<BufferedTreeNode>();
-      sink->pin_name = sdc_network_->pathName(pin);
-      Point sink_loc = db_network_->location(pin);
-      sink->x = dbuToMeters(sink_loc.getX()) * 1e6;
-      sink->y = dbuToMeters(sink_loc.getY()) * 1e6;
-      // Check Capacitance
-      sink->output_cap = -1.0;
-      LibertyPort* input_port = network_->libertyPort(pin);
-      sink->input_cap = resizer_->portCapacitance(input_port, corner1);
-      // check slew
-      sink->output_slew = -1.0;
-      sink->input_slew = input_slew;
-      sink->max_output_cap = -1.0;
-      sink->parent = root;
-      sink->node_type = BufferedTreeNodeType::SINK;
-      root->children.push_back(sink);
-    }
-  } 
+  if (corner1){ // if corner1 is nullptr (drvr does not related to any timing-related path), we can skip this net
 
-  root->fanout = root->children.size();
-  tree->setRoot(root);
-  buffered_trees_pre_.push_back(tree);
+    // Check all the sink pins
+    NetConnectedPinIterator* pin_iter = network_->connectedPinIterator(net);
+    while (pin_iter->hasNext()) {
+      const Pin* pin = pin_iter->next();
+      if (pin != drvr_pin && !network_->isTopLevelPort(pin)
+        && network_->direction(pin) == sta::PortDirection::input()
+        && network_->libertyPort(pin)) {
+      // if (pin != drvr_pin) {
+        BufferedTreeNodePtr sink = std::make_shared<BufferedTreeNode>();
+        sink->pin_name = sdc_network_->pathName(pin);
+        Point sink_loc = db_network_->location(pin);
+        sink->x = dbuToMeters(sink_loc.getX()) * 1e6;
+        sink->y = dbuToMeters(sink_loc.getY()) * 1e6;
+        // Check Capacitance
+        sink->output_cap = -1.0;
+        LibertyPort* input_port = network_->libertyPort(pin);
+        if (input_port == nullptr) { 
+          std::cout << "Failed to retrieve LibertyPort for pin: {}"<< sdc_network_->pathName(pin)<<std::endl;
+          continue;
+        } // maybe we can skip this pin
+
+        // if (corner1 == nullptr) {
+        //   std::cout << "Failed to retrieve corner for pin: {}"<<sdc_network_->pathName(pin)<<std::endl;
+        //   break;
+        // }
+        sink->input_cap = resizer_->portCapacitance(input_port, corner1);
+        // check slew
+        sink->output_slew = -1.0;
+        sink->input_slew = input_slew;
+        sink->max_output_cap = -1.0;
+        sink->parent = root;
+        sink->node_type = BufferedTreeNodeType::SINK;
+        root->children.push_back(sink);
+      }
+    } 
+    root->fanout = root->children.size();
+    tree->setRoot(root);
+    buffered_trees_pre_.push_back(tree);
+  }
+  else {
+    std::cout << "Failed to retrieve corner for driver pin: "<<sdc_network_->pathName(drvr_pin)<<std::endl;
+  }
+  // root->fanout = root->children.size();
+  // tree->setRoot(root);
+  // buffered_trees_pre_.push_back(tree);
 }
+
+// void createPostBufferedTree(const char* reason,
+//                         int x,
+//                         int y,
+//                         LibertyCell* buffer_cell,
+//                         // Return values.
+//                         PinSeq& load_pins,
+//                         float& repeater_cap,
+//                         float& repeater_fanout,
+//                         float& repeater_max_slew,
+//                         Pin*& repeater_in_pin,
+//                         Pin*& repeater_out_pin); //YL
 
 // ----------------------------------------------------------------------------
 // BufferedTreeNode
