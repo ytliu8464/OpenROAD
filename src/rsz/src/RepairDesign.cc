@@ -1901,17 +1901,18 @@ void RepairDesign::makeRepeater(const char* reason,
 
   //YL
   //update buffered tree
-  // createPostBufferedTree(const char* reason,
-  //                       int x,
-  //                       int y,
-  //                       LibertyCell* buffer_cell,
-  //                       // Return values.
-  //                       PinSeq& load_pins,
-  //                       float& repeater_cap,
-  //                       float& repeater_fanout,
-  //                       float& repeater_max_slew,
-  //                       Pin*& repeater_in_pin,
-  //                       Pin*& repeater_out_pin);
+  std::cout << "--------Add a buffer, buffer count is ----" << inserted_buffer_count_<< std::endl;
+  createPostBufferedTree(reason,
+                        x,
+                        y,
+                        buffer_cell,
+                        // Return values.
+                        load_pins,
+                        repeater_cap,
+                        repeater_fanout,
+                        repeater_max_slew,
+                        repeater_in_pin,
+                        repeater_out_pin);
   load_pins.clear();
   load_pins.push_back(repeater_in_pin);
   repeater_cap = resizer_->portCapacitance(buffer_input_port, corner_);
@@ -2132,8 +2133,10 @@ void RepairDesign::repairDesign_update(
       // To do: create a buffered tree to store the original net
       float max_cap = INF;
       createPreBufferedTree(net, drvr_pin, max_cap);
+      std::cout << "Begin Pre Tree Print\n";
       buffered_trees_pre_.back()->printTree();
-      constructed_buffered_tree_ = buffered_trees_pre_.back(); //YL
+      std::cout << "End Pre Tree Print\n";
+      buffered_tree_ = buffered_trees_pre_.back(); //YL
       repairNet_update(net,
                 drvr_pin,
                 drvr,
@@ -2302,8 +2305,10 @@ void RepairDesign::repairNet_update(Net* net,
       }
     }
     if (repaired_net) {
-      buffered_trees_post_.push_back(constructed_buffered_tree_);
+      buffered_trees_post_.push_back(buffered_tree_);
+      std::cout << "Begin Post Tree Print\n";
       buffered_trees_post_.back()->printTree();
+      std::cout << "End Post Tree Print\n";
       repaired_net_count++;
     }
   }
@@ -2461,17 +2466,80 @@ void RepairDesign::createPreBufferedTree(
   // buffered_trees_pre_.push_back(tree);
 }
 
-// void createPostBufferedTree(const char* reason,
-//                         int x,
-//                         int y,
-//                         LibertyCell* buffer_cell,
-//                         // Return values.
-//                         PinSeq& load_pins,
-//                         float& repeater_cap,
-//                         float& repeater_fanout,
-//                         float& repeater_max_slew,
-//                         Pin*& repeater_in_pin,
-//                         Pin*& repeater_out_pin); //YL
+//YL
+void RepairDesign::createPostBufferedTree(const char* reason,
+                        int x,
+                        int y,
+                        LibertyCell* buffer_cell,
+                        // Return values.
+                        PinSeq& load_pins,
+                        float& repeater_cap,
+                        float& repeater_fanout,
+                        float& repeater_max_slew,
+                        Pin*& repeater_in_pin,
+                        Pin*& repeater_out_pin)
+{
+  if (!buffered_tree_->getRoot()) {
+        logger_->warn(RSZ, 200, "Buffer tree root is null. Skipping update.");
+        return;
+    }
+  // 1. create buffer node
+  BufferedTreeNodePtr buffer = std::make_shared<BufferedTreeNode>();
+  buffer->pin_name = 'test_buffer';
+  // sink->pin_name = sdc_network_->pathName(pin);
+  buffer->x = dbuToMeters(x) * 1e6;
+  buffer->y = dbuToMeters(y) * 1e6;
+  // Check Capacitance
+  buffer->output_cap = -1.0;
+  // sink->output_cap = -1.0;
+  // LibertyPort* input_port = network_->libertyPort(pin);
+  // if (input_port == nullptr) { 
+  //   std::cout << "Failed to retrieve LibertyPort for pin: {}"<< sdc_network_->pathName(pin)<<std::endl;
+  //   continue;
+  // } // maybe we can skip this pin
+  buffer->input_cap = -1;
+  // sink->input_cap = resizer_->portCapacitance(input_port, corner1);
+  // check slew
+  // sink->output_slew = -1.0;
+  // sink->input_slew = input_slew;
+  // sink->max_output_cap = -1.0;
+  buffer->output_slew = -1.0;
+  buffer->input_slew = -1;
+  buffer->max_output_cap = -1.0;
+  buffer->node_type = BufferedTreeNodeType::BUFFER;
+
+  // 2. add buffer to the child of the root
+  BufferedTreeNodePtr root = buffered_tree_->getRoot();
+  buffer->parent = root;
+  root->children.push_back(buffer);
+
+  // 3. find sinks driven by the buffer
+  std::vector<BufferedTreeNodePtr> nodes_to_remove;
+  auto& root_children = buffered_tree_->getRoot()->children;
+  // Precompute load pin names for faster lookup
+  std::unordered_set<std::string> load_pin_names;
+  for (const Pin* pin : load_pins) {
+      load_pin_names.insert(sdc_network_->pathName(pin));
+  }
+  // Iterate through root's children to find matching loads
+  for (auto& child : root_children) {
+      if (load_pin_names.find(child->pin_name) != load_pin_names.end()) {
+          buffer->children.push_back(child);
+          child->parent = buffer;
+          nodes_to_remove.push_back(child);
+      }
+  }
+
+  // 4. Remove loads from the root
+  for (const auto& node : nodes_to_remove) {
+      root_children.erase(
+          std::remove(root_children.begin(), root_children.end(), node),
+          root_children.end()
+      );
+  }
+
+
+}
 
 // ----------------------------------------------------------------------------
 // BufferedTreeNode
@@ -2520,7 +2588,6 @@ void BufferedTree::printTree() const
   }
 
 
-  std::cout << "Begin Tree Print\n";
   // Reset the queue and print the nodes.
   auto printNode = [](BufferedTreeNodePtr node) {
     std::cout << "Node ID: " << node->node_id << "\t";
@@ -2546,7 +2613,6 @@ void BufferedTree::printTree() const
     }
   }
 
-  std::cout << "End Tree Print\n";
 }
 
 
