@@ -1898,24 +1898,23 @@ void RepairDesign::makeRepeater(const char* reason,
 
   repeater_in_pin = network_->findPin(buffer, buffer_input_port);
   repeater_out_pin = network_->findPin(buffer, buffer_output_port);
-
+  repeater_cap = resizer_->portCapacitance(buffer_input_port, corner_);
   //YL
   //update buffered tree
   std::cout << "--------Add a buffer, buffer count is ----" << inserted_buffer_count_<< std::endl;
-  createPostBufferedTree(reason,
-                        x,
+  createPostBufferedTree(x,
                         y,
                         buffer_cell,
                         // Return values.
                         load_pins,
-                        repeater_cap,
                         repeater_fanout,
                         repeater_max_slew,
                         repeater_in_pin,
-                        repeater_out_pin);
+                        repeater_out_pin,
+                        repeater_cap);
   load_pins.clear();
   load_pins.push_back(repeater_in_pin);
-  repeater_cap = resizer_->portCapacitance(buffer_input_port, corner_);
+  // repeater_cap = resizer_->portCapacitance(buffer_input_port, corner_);
   repeater_fanout = resizer_->portFanoutLoad(buffer_input_port);
   repeater_max_slew = bufferInputMaxSlew(buffer_cell, corner_);
 }
@@ -2454,30 +2453,29 @@ void RepairDesign::createPreBufferedTree(
         root->children.push_back(sink);
       }
     } 
-    root->fanout = root->children.size();
-    tree->setRoot(root);
-    buffered_trees_pre_.push_back(tree);
+    // root->fanout = root->children.size();
+    // tree->setRoot(root);
+    // buffered_trees_pre_.push_back(tree);
   }
   else {
     std::cout << "Failed to retrieve corner for driver pin: "<<sdc_network_->pathName(drvr_pin)<<std::endl;
   }
-  // root->fanout = root->children.size();
-  // tree->setRoot(root);
-  // buffered_trees_pre_.push_back(tree);
+  root->fanout = root->children.size();
+  tree->setRoot(root);
+  buffered_trees_pre_.push_back(tree);
 }
 
 //YL
-void RepairDesign::createPostBufferedTree(const char* reason,
-                        int x,
-                        int y,
-                        LibertyCell* buffer_cell,
-                        // Return values.
-                        PinSeq& load_pins,
-                        float& repeater_cap,
-                        float& repeater_fanout,
-                        float& repeater_max_slew,
-                        Pin*& repeater_in_pin,
-                        Pin*& repeater_out_pin)
+void RepairDesign::createPostBufferedTree(int x,
+  int y,
+  LibertyCell* buffer_cell,
+  // Return values.
+  PinSeq& load_pins,
+  float& repeater_fanout,
+  float& repeater_max_slew,
+  Pin*& repeater_in_pin,
+  Pin*& repeater_out_pin,
+  float& repeater_cap)
 {
   if (!buffered_tree_->getRoot()) {
         logger_->warn(RSZ, 200, "Buffer tree root is null. Skipping update.");
@@ -2485,27 +2483,23 @@ void RepairDesign::createPostBufferedTree(const char* reason,
     }
   // 1. create buffer node
   BufferedTreeNodePtr buffer = std::make_shared<BufferedTreeNode>();
-  buffer->pin_name = 'test_buffer';
-  // sink->pin_name = sdc_network_->pathName(pin);
+  buffer->pin_name = sdc_network_->pathName(repeater_in_pin); // buffer cell input pin
   buffer->x = dbuToMeters(x) * 1e6;
   buffer->y = dbuToMeters(y) * 1e6;
+  // const Corner* corner1;
   // Check Capacitance
-  buffer->output_cap = -1.0;
-  // sink->output_cap = -1.0;
-  // LibertyPort* input_port = network_->libertyPort(pin);
-  // if (input_port == nullptr) { 
-  //   std::cout << "Failed to retrieve LibertyPort for pin: {}"<< sdc_network_->pathName(pin)<<std::endl;
-  //   continue;
-  // } // maybe we can skip this pin
-  buffer->input_cap = -1;
-  // sink->input_cap = resizer_->portCapacitance(input_port, corner1);
+  float max_cap = INF;
+  buffer->output_cap = getOutputCap(repeater_out_pin, max_cap);
+  // buffer->input_cap = resizer_->portCapacitance(buffer_input_port, corner_);
+  buffer->input_cap = repeater_cap;
+
   // check slew
-  // sink->output_slew = -1.0;
-  // sink->input_slew = input_slew;
-  // sink->max_output_cap = -1.0;
-  buffer->output_slew = -1.0;
-  buffer->input_slew = -1;
-  buffer->max_output_cap = -1.0;
+  float input_slew; 
+  float output_slew;
+  getSlew(repeater_out_pin, max_cap, output_slew, input_slew);  
+  buffer->output_slew = output_slew;
+  buffer->input_slew = input_slew;
+  buffer->max_output_cap = max_cap;
   buffer->node_type = BufferedTreeNodeType::BUFFER;
 
   // 2. add buffer to the child of the root
@@ -2574,22 +2568,22 @@ void BufferedTree::printTree() const
 {
   // Print the tree in a pre-order DFS traversal.
   int node_id = 0;
-  std::queue<BufferedTreeNodePtr> q;
-  q.push(root_);
+  std::queue<std::pair<BufferedTreeNodePtr, int>> q; // Queue now stores a pair of node and its depth
+  q.push({root_, 0}); // Root node is at depth 0
 
   while (!q.empty()) {
-    auto node = q.front();
-    q.pop();
-    node->node_id = node_id;
-    node_id++;
-    for (const auto& child : node->children) {
-      q.push(child);
-    }
-  }
-
+      auto [node, depth] = q.front(); // Unpack the node and its depth
+      q.pop();
+      node->node_id = node_id;
+      node_id++;
+      for (const auto& child : node->children) {
+          q.push({child, depth + 1}); // Increment depth for children
+      }
+}
 
   // Reset the queue and print the nodes.
-  auto printNode = [](BufferedTreeNodePtr node) {
+  auto printNode = [](BufferedTreeNodePtr node, int depth) {
+    std::cout << "Depth: " << depth << "\t";
     std::cout << "Node ID: " << node->node_id << "\t";
     std::cout << "Node type: " << bufferedTreeNodeTypeToString(node->node_type) << "\t";
     std::cout << "Pin name: " << node->pin_name << "\t";
@@ -2603,18 +2597,16 @@ void BufferedTree::printTree() const
     std::cout << "#Children: " << node->children.size() << "\n";
   };
 
-  q.push(root_);
+  q.push({root_, 0}); // Reset the queue with root node and depth 0
   while (!q.empty()) {
-    auto node = q.front();
+    auto [node, depth] = q.front(); // Unpack the node and its depth
     q.pop();
-    printNode(node);
+    printNode(node, depth); 
     for (const auto& child : node->children) {
-      q.push(child);
+        q.push({child, depth + 1}); // Increment depth for children
     }
   }
-
 }
-
 
 
 void BufferedTree::clear()

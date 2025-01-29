@@ -323,17 +323,17 @@ class RepairDesign : dbStaState
   void getSlew(const Pin* drvr_pin, float& max_cap,
     float &output_slew, float &input_slew);
   void createPreBufferedTree(Net* net, const Pin* drvr_pin, float max_cap);
-  void createPostBufferedTree(const char* reason,
+  void createPostBufferedTree(
                         int x,
                         int y,
                         LibertyCell* buffer_cell,
                         // Return values.
                         PinSeq& load_pins,
-                        float& repeater_cap,
                         float& repeater_fanout,
                         float& repeater_max_slew,
                         Pin*& repeater_in_pin,
-                        Pin*& repeater_out_pin); //YL
+                        Pin*& repeater_out_pin,
+                        float& repeater_cap); //YL
 
   std::vector<BufferedTreePtr> buffered_trees_pre_;
   std::vector<BufferedTreePtr> buffered_trees_post_;
