@@ -335,6 +335,11 @@ class RepairDesign : dbStaState
                         Pin*& repeater_out_pin,
                         float& repeater_cap); //YL
 
+  void testBufferedTree(Pin*& repeater_in_pin,
+                        Pin*& repeater_out_pin, 
+                        Net*& in_net, 
+                        Net*& out_net);//YL
+                        
   std::vector<BufferedTreePtr> buffered_trees_pre_;
   std::vector<BufferedTreePtr> buffered_trees_post_;
   BufferedTreePtr buffered_tree_;

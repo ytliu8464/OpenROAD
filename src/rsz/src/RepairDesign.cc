@@ -158,6 +158,11 @@ void RepairDesign::repairDesign(
                         cap_violations,
                         fanout_violations,
                         length_violations);
+    std::cout << "Buffered Trees Pre Size (#net): " << buffered_trees_pre_.size() << std::endl;
+    std::cout << "Buffered Trees Post Size (#buffered net): " << buffered_trees_post_.size() << std::endl;
+    std::cout << "#buffered net (test): " << repaired_net_count << std::endl;
+    std::cout << "#buffer: " << inserted_buffer_count_ << std::endl;
+ 
     return;
   }
   
@@ -1885,8 +1890,14 @@ void RepairDesign::makeRepeater(const char* reason,
   sta_->connectPin(buffer, buffer_input_port, in_net);
   sta_->connectPin(buffer, buffer_output_port, out_net);
 
+
   resizer_->parasiticsInvalid(in_net);
   resizer_->parasiticsInvalid(out_net);
+  
+  //YL: do not consider resizing
+  if (buffered_tree_->getRoot()){
+    resize = false;
+  }
 
   // Resize repeater as we back up by levels.
   if (resize) {
@@ -1899,6 +1910,7 @@ void RepairDesign::makeRepeater(const char* reason,
   repeater_in_pin = network_->findPin(buffer, buffer_input_port);
   repeater_out_pin = network_->findPin(buffer, buffer_output_port);
   repeater_cap = resizer_->portCapacitance(buffer_input_port, corner_);
+  
   //YL
   //update buffered tree
   if (buffered_tree_->getRoot()){
@@ -1914,6 +1926,10 @@ void RepairDesign::makeRepeater(const char* reason,
                         repeater_in_pin,
                         repeater_out_pin,
                         repeater_cap);
+    //YL test
+    std::cout<<"Start testing buffered tree...\n";
+    testBufferedTree(repeater_in_pin,repeater_out_pin, in_net, out_net);
+    std::cout<<"End testing buffered tree...\n";
 
   }
 
@@ -2534,9 +2550,42 @@ void RepairDesign::createPostBufferedTree(int x,
       );
   }
   std::cout << "Add one buffer to the buffered tree...\n";
+}
 
+//YL: verfity the constructed buffered tree
+void RepairDesign::testBufferedTree(Pin*& repeater_in_pin,
+                        Pin*& repeater_out_pin, 
+                        Net*& in_net, 
+                        Net*& out_net)
+{
+  std::string buffer_in_pin_name = sdc_network_->pathName(repeater_in_pin);
+  std::string buffer_out_pin_name = sdc_network_->pathName(repeater_out_pin);
+  std::cout<<"Buffer in pin name: "<<buffer_in_pin_name<<std::endl;
+  std::cout<<"Buffer out pin name: "<<buffer_out_pin_name<<std::endl;
+  NetConnectedPinIterator* pin_iter_in = network_->connectedPinIterator(in_net);
+  std::cout<<"In pin name: ";
+  while (pin_iter_in->hasNext()) {
+    const Pin* pin = pin_iter_in->next();
+    std::string in_pin_name = sdc_network_->pathName(pin);
+    Point sink_loc = db_network_->location(pin);
+    float in_pin_x = dbuToMeters(sink_loc.getX()) * 1e6;
+    float in_pin_y = dbuToMeters(sink_loc.getY()) * 1e6;
+    std::cout<<" "<<in_pin_name<<" ("<<in_pin_x<<", "<<in_pin_y<<") \t";
+  }
+
+  NetConnectedPinIterator* pin_iter_out = network_->connectedPinIterator(out_net);
+  std::cout<<"\n Out pin name: ";
+  while (pin_iter_out->hasNext()) {
+    const Pin* pin = pin_iter_out->next();
+    std::string out_pin_name = sdc_network_->pathName(pin);
+    Point sink_loc = db_network_->location(pin);
+    float out_pin_x = dbuToMeters(sink_loc.getX()) * 1e6;
+    float out_pin_y = dbuToMeters(sink_loc.getY()) * 1e6;
+    std::cout<<" "<<out_pin_name<<" ("<<out_pin_x<<",  "<<out_pin_y<<") \t";
+  }
 
 }
+                        
 
 // ----------------------------------------------------------------------------
 // BufferedTreeNode
@@ -2579,6 +2628,10 @@ void BufferedTree::printTree() const
   int node_id = 0;
   std::queue<std::pair<BufferedTreeNodePtr, int>> q; // Queue now stores a pair of node and its depth
   q.push({root_, 0}); // Root node is at depth 0
+
+  // std::string net_name_str;
+  // net_name_str = net_->getName().c_str();
+  // std::cout << "Net_name: " << net_name_str << "\t";
 
   while (!q.empty()) {
       auto [node, depth] = q.front(); // Unpack the node and its depth
