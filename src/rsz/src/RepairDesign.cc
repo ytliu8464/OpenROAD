@@ -36,6 +36,7 @@
 #include "RepairDesign.hh"
 
 #include <vector>
+#include <fstream>
 
 #include "BufferedNet.hh"
 #include "db_sta/dbNetwork.hh"
@@ -158,10 +159,13 @@ void RepairDesign::repairDesign(
                         cap_violations,
                         fanout_violations,
                         length_violations);
-    std::cout << "Buffered Trees Pre Size (#net): " << buffered_trees_pre_.size() << std::endl;
-    std::cout << "Buffered Trees Post Size (#buffered net): " << buffered_trees_post_.size() << std::endl;
-    std::cout << "#buffered net (test): " << repaired_net_count << std::endl;
-    std::cout << "#buffer: " << inserted_buffer_count_ << std::endl;
+    // YL: store buffered trees
+    analyzeBufferedTrees();
+    std::cout << "--------------Store buffered trees to the csv file----------------" << std::endl;
+    // std::cout << "Buffered Trees Pre Size (#net): " << buffered_trees_pre_.size() << std::endl;
+    // std::cout << "Buffered Trees Post Size (#buffered net): " << buffered_trees_post_.size() << std::endl;
+    // std::cout << "#buffered net (test): " << repaired_net_count << std::endl;
+    // std::cout << "#buffer: " << inserted_buffer_count_ << std::endl;
  
     return;
   }
@@ -2050,6 +2054,7 @@ void RepairDesign::initBufferedTrees()
 {
   buffered_trees_pre_.clear();
   buffered_trees_post_.clear();
+  // buffered_tree_->clear();
 }
 
 void RepairDesign::writeBufferedTrees(const std::string& file_name)
@@ -2549,7 +2554,7 @@ void RepairDesign::createPostBufferedTree(int x,
           root_children.end()
       );
   }
-  std::cout << "Add one buffer to the buffered tree...\n";
+  std::cout << "createPostBufferedTree finished flag (add one buffer to the buffered tree...)\n";
 }
 
 //YL: verfity the constructed buffered tree
@@ -2586,6 +2591,142 @@ void RepairDesign::testBufferedTree(Pin*& repeater_in_pin,
 
 }
                         
+// ----------------------------------------------------------------------------
+//  BufferedTree statistical analysis 
+// ----------------------------------------------------------------------------
+
+// count the number of sinks and buffers in the tree
+void RepairDesign::countNodes(const BufferedTreePtr& tree, int& sink_count, int& buffer_count) {
+  if (!tree || !tree->getRoot()) return;
+
+  std::queue<BufferedTreeNodePtr> q;
+  q.push(tree->getRoot());
+
+  sink_count = 0;
+  buffer_count = 0;
+
+  while (!q.empty()) {
+      BufferedTreeNodePtr node = q.front();
+      q.pop();
+
+      if (node->node_type == BufferedTreeNodeType::SINK) {
+          sink_count++;
+      } else if (node->node_type == BufferedTreeNodeType::BUFFER) {
+          buffer_count++;
+      }
+
+      for (const auto& child : node->children) {
+          q.push(child);
+      }
+  }
+}
+
+// save to csv file
+void RepairDesign::printTreeToCSV(const std::vector<BufferedTreePtr>& trees, const std::string& filename) {
+  std::ofstream file(filename);
+
+  if (!file.is_open()) {
+      std::cerr << "Error: Unable to open file for writing!\n";
+      return;
+  }
+
+  // csv header
+  file << "Net Name,Tree ID,Depth,Node ID,Node Type,Pin Name,X,Y,Input Slew,Output Slew,";
+  file << "Input Cap,Output Cap,Max Output Cap,Fanout,Parent Node ID,#Children,Sink Count,Buffer Count\n";
+
+  int tree_id = 0;
+  for (const auto& tree : trees) {
+    if (!tree || !tree->getRoot()) continue;
+
+    int sink_count = 0, buffer_count = 0;
+    countNodes(tree, sink_count, buffer_count);
+
+    // obtain net name
+    dbNet* net_db = db_network_->staToDb(tree->getNet());
+    std::string net_name = net_db->getName();
+
+    std::queue<std::pair<BufferedTreeNodePtr, int>> q;
+    q.push({tree->getRoot(), 0});
+    int node_id = 0;
+
+    while (!q.empty()) {
+      auto [node, depth] = q.front();
+      q.pop();
+      node->node_id = node_id++;
+
+      file << net_name << ",";                         // Net Name
+      file << tree_id << ",";                          // Tree ID
+      file << depth << ",";                            // Depth
+      file << node->node_id << ",";                    // Node ID
+      file << bufferedTreeNodeTypeToString(node->node_type) << ",";  // Node Type
+      file << node->pin_name << ",";                   // Pin Name
+      file << node->x << "," << node->y << ",";        // X, Y
+      file << node->input_slew << "," << node->output_slew << ",";  // Slew
+      file << node->input_cap << "," << node->output_cap << ",";    // Capacitance
+      file << node->max_output_cap << ",";             // Max Output Cap
+      file << node->fanout << ",";                     // Fanout
+      file << (node->parent ? std::to_string(node->parent->node_id) : "None") << ",";  // Parent Node ID
+      file << node->children.size() << ",";            // #Children
+      file << sink_count << "," << buffer_count << "\n"; // Sink Count, Buffer Count
+
+              
+      for (const auto& child : node->children) {
+          q.push({child, depth + 1});
+      }
+    }
+    
+
+    tree_id++;
+  }
+  file.close();
+}
+
+// analyze and save
+void RepairDesign::analyzeBufferedTrees() {
+  std::cout << "Total Trees (Pre Repair): " << buffered_trees_pre_.size() << std::endl;
+  std::cout << "Total Trees (Post Repair): " << buffered_trees_post_.size() << std::endl;
+
+  std::string pre_filename = generateUniqueFilename("buffered_trees_pre");
+  std::string post_filename = generateUniqueFilename("buffered_trees_post");
+
+  if (buffered_trees_pre_.size() > 0) {
+    printTreeToCSV(buffered_trees_pre_, pre_filename);
+    std::cout << "buffered_trees_pre saved to " << pre_filename << std::endl;
+  }
+
+  if (buffered_trees_post_.size() > 0) {
+    printTreeToCSV(buffered_trees_post_, post_filename);
+    std::cout << "buffered_trees_post saved to " << post_filename << std::endl;
+  }
+
+  // printTreeToCSV(buffered_trees_pre_, "buffered_trees_pre.csv");
+  // printTreeToCSV(buffered_trees_post_, "buffered_trees_post.csv");
+}
+
+// obtain the current time stamp
+std::string RepairDesign::getCurrentTimestamp() {
+    std::time_t now = std::time(nullptr);
+    std::tm* local_time = std::localtime(&now);
+    
+    std::ostringstream oss;
+    oss << (1900 + local_time->tm_year) 
+        << (local_time->tm_mon + 1) 
+        << local_time->tm_mday << "_" 
+        << local_time->tm_hour 
+        << local_time->tm_min 
+        << local_time->tm_sec;
+    
+    return oss.str();
+}
+
+std::string RepairDesign::generateUniqueFilename(const std::string& base_name) {
+  const std::string save_directory = "/home/dgx_projects/MLBuf/mlbuf-dev/buffered_trees_data/";  
+  // if (!fs::exists(directory)) {
+  //   fs::create_directories(directory); 
+  // }
+  return save_directory + base_name + "_" + getCurrentTimestamp() + ".csv";
+}
+
 
 // ----------------------------------------------------------------------------
 // BufferedTreeNode

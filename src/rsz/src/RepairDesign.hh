@@ -339,7 +339,21 @@ class RepairDesign : dbStaState
                         Pin*& repeater_out_pin, 
                         Net*& in_net, 
                         Net*& out_net);//YL
-                        
+
+  void countNodes(const BufferedTreePtr& tree, 
+                                int& sink_count, 
+                                int& buffer_count);
+
+  void printTreeToCSV(const std::vector<BufferedTreePtr>& trees, 
+                      const std::string& filename);
+
+  // void analyzeBufferedTrees(const std::vector<BufferedTreePtr>& buffered_trees_pre_,
+  //                           const std::vector<BufferedTreePtr>& buffered_trees_post_);
+  void analyzeBufferedTrees();
+
+  std::string getCurrentTimestamp();
+  std::string generateUniqueFilename(const std::string& base_name);
+
   std::vector<BufferedTreePtr> buffered_trees_pre_;
   std::vector<BufferedTreePtr> buffered_trees_post_;
   BufferedTreePtr buffered_tree_;
