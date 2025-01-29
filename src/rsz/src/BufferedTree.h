@@ -83,6 +83,7 @@ class BufferedTree
 
     void setRoot(BufferedTreeNodePtr node);
     BufferedTreeNodePtr getRoot() const;
+    sta::Net* getNet() const;
 
     void printTree() const;
     void clear();

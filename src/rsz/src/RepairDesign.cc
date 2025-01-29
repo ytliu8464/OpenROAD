@@ -1901,8 +1901,10 @@ void RepairDesign::makeRepeater(const char* reason,
   repeater_cap = resizer_->portCapacitance(buffer_input_port, corner_);
   //YL
   //update buffered tree
-  std::cout << "--------Add a buffer, buffer count is ----" << inserted_buffer_count_<< std::endl;
-  createPostBufferedTree(x,
+  if (buffered_tree_->getRoot()){
+    std::cout << "--------Add a buffer and the buffer count is ----" << inserted_buffer_count_<< std::endl;
+    std::cout << "Start constructing buffered tree...\n";
+    createPostBufferedTree(x,
                         y,
                         buffer_cell,
                         // Return values.
@@ -1912,6 +1914,9 @@ void RepairDesign::makeRepeater(const char* reason,
                         repeater_in_pin,
                         repeater_out_pin,
                         repeater_cap);
+
+  }
+
   load_pins.clear();
   load_pins.push_back(repeater_in_pin);
   // repeater_cap = resizer_->portCapacitance(buffer_input_port, corner_);
@@ -2306,9 +2311,10 @@ void RepairDesign::repairNet_update(Net* net,
     if (repaired_net) {
       buffered_trees_post_.push_back(buffered_tree_);
       std::cout << "Begin Post Tree Print\n";
-      buffered_trees_post_.back()->printTree();
+      buffered_tree_->printTree();
       std::cout << "End Post Tree Print\n";
       repaired_net_count++;
+      std::cout << "------------Repaired net count------------- " << repaired_net_count << std::endl;
     }
   }
 }
@@ -2477,10 +2483,6 @@ void RepairDesign::createPostBufferedTree(int x,
   Pin*& repeater_out_pin,
   float& repeater_cap)
 {
-  if (!buffered_tree_->getRoot()) {
-        logger_->warn(RSZ, 200, "Buffer tree root is null. Skipping update.");
-        return;
-    }
   // 1. create buffer node
   BufferedTreeNodePtr buffer = std::make_shared<BufferedTreeNode>();
   buffer->pin_name = sdc_network_->pathName(repeater_in_pin); // buffer cell input pin
@@ -2531,6 +2533,7 @@ void RepairDesign::createPostBufferedTree(int x,
           root_children.end()
       );
   }
+  std::cout << "Add one buffer to the buffered tree...\n";
 
 
 }
@@ -2564,6 +2567,12 @@ BufferedTreeNodePtr BufferedTree::getRoot() const
   return root_;
 }
 
+//YL
+sta::Net* BufferedTree::getNet() const 
+{ 
+  return net_; 
+}
+
 void BufferedTree::printTree() const
 {
   // Print the tree in a pre-order DFS traversal.
@@ -2592,6 +2601,7 @@ void BufferedTree::printTree() const
     std::cout << "Output slew: " << node->output_slew << "\t";
     std::cout << "Input cap: " << node->input_cap << "\t";
     std::cout << "Output cap: " << node->output_cap << "\t";
+    std::cout << "Max output cap: " << node->max_output_cap << "\t";
     std::cout << "Fanout: " << node->fanout << "\t";
     std::cout << "Parent: " << (node->parent ? std::to_string(node->parent->node_id) : "None") << "\t";
     std::cout << "#Children: " << node->children.size() << "\n";
