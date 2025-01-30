@@ -389,10 +389,10 @@ class RepairDesign : dbStaState
                                 int& buffer_count);
 
   void printTreeToCSV(const std::vector<BufferedTreePtr>& trees, 
-                      const std::string& filename);
+                      const std::string& filename,
+                      bool buffered_tree_print_flag);
+  bool treeContainsBuffer(const BufferedTreePtr& tree);
 
-  // void analyzeBufferedTrees(const std::vector<BufferedTreePtr>& buffered_trees_pre_,
-  //                           const std::vector<BufferedTreePtr>& buffered_trees_post_);
   void saveBufferedTrees();
 
   std::string getCurrentTimestamp();

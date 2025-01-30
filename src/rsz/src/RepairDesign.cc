@@ -3268,7 +3268,7 @@ void RepairDesign::countNodes(const BufferedTreePtr& tree, int& sink_count, int&
 }
 
 // save to csv file
-void RepairDesign::printTreeToCSV(const std::vector<BufferedTreePtr>& trees, const std::string& filename) {
+void RepairDesign::printTreeToCSV(const std::vector<BufferedTreePtr>& trees, const std::string& filename, bool buffered_tree_print_flag) {
   std::ofstream file(filename);
 
   if (!file.is_open()) {
@@ -3283,6 +3283,9 @@ void RepairDesign::printTreeToCSV(const std::vector<BufferedTreePtr>& trees, con
   int tree_id = 0;
   for (const auto& tree : trees) {
     if (!tree || !tree->getRoot()) continue;
+
+    // Skip this tree if it does not contain any "Buffer" node
+    if (!treeContainsBuffer(tree) && buffered_tree_print_flag) continue;
 
     int sink_count = 0, buffer_count = 0;
     countNodes(tree, sink_count, buffer_count);
@@ -3327,7 +3330,29 @@ void RepairDesign::printTreeToCSV(const std::vector<BufferedTreePtr>& trees, con
   file.close();
 }
 
-// analyze and save
+// check if the tree contains buffer
+bool RepairDesign::treeContainsBuffer(const BufferedTreePtr& tree) {
+    if (!tree || !tree->getRoot()) return false;
+
+    std::queue<BufferedTreeNodePtr> q;
+    q.push(tree->getRoot());
+
+    while (!q.empty()) {
+        auto node = q.front();
+        q.pop();
+
+        if (node->node_type == BufferedTreeNodeType::BUFFER) {
+            return true; // Found at least one buffer node
+        }
+
+        for (const auto& child : node->children) {
+            q.push(child);
+        }
+    }
+    return false; // No buffer node found
+}
+
+// save
 void RepairDesign::saveBufferedTrees() {
   std::cout << "Total Trees (Pre Repair): " << buffered_trees_pre_.size() << std::endl;
   std::cout << "Total Trees (Post Repair): " << buffered_trees_post_.size() << std::endl;
@@ -3336,12 +3361,14 @@ void RepairDesign::saveBufferedTrees() {
   std::string post_filename = generateUniqueFilename("buffered_trees_post");
 
   if (buffered_trees_pre_.size() > 0) {
-    printTreeToCSV(buffered_trees_pre_, pre_filename);
+    bool buffered_tree_print_flag = false;
+    printTreeToCSV(buffered_trees_pre_, pre_filename, buffered_tree_print_flag);
     std::cout << "buffered_trees_pre saved to " << pre_filename << std::endl;
   }
 
   if (buffered_trees_post_.size() > 0) {
-    printTreeToCSV(buffered_trees_post_, post_filename);
+    bool buffered_tree_print_flag = true;
+    printTreeToCSV(buffered_trees_post_, post_filename, buffered_tree_print_flag);
     std::cout << "buffered_trees_post saved to " << post_filename << std::endl;
   }
 
@@ -3366,7 +3393,7 @@ std::string RepairDesign::getCurrentTimestamp() {
 }
 
 std::string RepairDesign::generateUniqueFilename(const std::string& base_name) {
-  const std::string save_directory = "/home/dgx_projects/MLBuf/mlbuf-dev/buffered_trees_data/";  
+  const std::string save_directory = "/home/dgx_projects/MLBuf/mlbuf-dev/buffered_trees_data/finish_v1/";  
   // if (!fs::exists(directory)) {
   //   fs::create_directories(directory); 
   // }
