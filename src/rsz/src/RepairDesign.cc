@@ -2389,39 +2389,16 @@ void RepairDesign::getSlew(
 }
 
 
+// Signoff at 2025/01/29
 void RepairDesign::createPreBufferedTree(
   Net* net, 
   const Pin* drvr_pin, 
   float max_cap)
 {
   BufferedTreePtr tree = std::make_shared<BufferedTree>(net);
-  /*
-  // Check the locations for all the pins
-  odb::dbNet* db_net;
-  db_net = db_network_->flatNet(drvr_pin);
-  Net* net_new
-      = network_->isTopLevelPort(drvr_pin)
-            ? network_->net(network_->term(drvr_pin))
-            // original code, could retrun a mod net  : network_->net(drvr_pin);
-            : db_network_->dbToSta(db_net);
-
-  NetConnectedPinIterator* pin_iter = network_->connectedPinIterator(net_new);
-  std::map<std::string, Point> pin_locs;
-  while (pin_iter->hasNext()) {
-    const Pin* pin = pin_iter->next();
-    Point loc = db_network_->location(pin);
-    pin_locs[sdc_network_->pathName(pin)] = loc;
-    std::cout << "Pin: " << sdc_network_->pathName(pin) << " Location: " << loc.getX() << " " << loc.getY() << std::endl;
-  }
-  */
-
-  // create the root node
   BufferedTreeNodePtr root = std::make_shared<BufferedTreeNode>();
   root->pin_name = sdc_network_->pathName(drvr_pin);
   Point drvr_loc = db_network_->location(drvr_pin);
-  //auto drvr_loc = pin_locs[root->pin_name];
-  //std::cout << "Driver Pin: " << root->pin_name << std::endl;
-  //std::cout << "Driver Location: " << drvr_loc.getX() << " " << drvr_loc.getY() << std::endl;
   root->x = dbuToMeters(drvr_loc.getX()) * 1e6;
   root->y = dbuToMeters(drvr_loc.getY()) * 1e6;
   // Check Capacitance
@@ -2444,15 +2421,14 @@ void RepairDesign::createPreBufferedTree(
   checkSlew(drvr_pin, slew1, max_slew1, slew_slack1, corner1);
 
   if (corner1){ // if corner1 is nullptr (drvr does not related to any timing-related path), we can skip this net
-
     // Check all the sink pins
     NetConnectedPinIterator* pin_iter = network_->connectedPinIterator(net);
     while (pin_iter->hasNext()) {
       const Pin* pin = pin_iter->next();
+      // ignore all the sinks that are "output-ports"
       if (pin != drvr_pin && !network_->isTopLevelPort(pin)
         && network_->direction(pin) == sta::PortDirection::input()
         && network_->libertyPort(pin)) {
-      // if (pin != drvr_pin) {
         BufferedTreeNodePtr sink = std::make_shared<BufferedTreeNode>();
         sink->pin_name = sdc_network_->pathName(pin);
         Point sink_loc = db_network_->location(pin);
@@ -2461,15 +2437,6 @@ void RepairDesign::createPreBufferedTree(
         // Check Capacitance
         sink->output_cap = -1.0;
         LibertyPort* input_port = network_->libertyPort(pin);
-        if (input_port == nullptr) { 
-          std::cout << "Failed to retrieve LibertyPort for pin: {}"<< sdc_network_->pathName(pin)<<std::endl;
-          continue;
-        } // maybe we can skip this pin
-
-        // if (corner1 == nullptr) {
-        //   std::cout << "Failed to retrieve corner for pin: {}"<<sdc_network_->pathName(pin)<<std::endl;
-        //   break;
-        // }
         sink->input_cap = resizer_->portCapacitance(input_port, corner1);
         // check slew
         sink->output_slew = -1.0;
@@ -2480,17 +2447,15 @@ void RepairDesign::createPreBufferedTree(
         root->children.push_back(sink);
       }
     } 
-    // root->fanout = root->children.size();
-    // tree->setRoot(root);
-    // buffered_trees_pre_.push_back(tree);
   }
   else {
-    std::cout << "Failed to retrieve corner for driver pin: "<<sdc_network_->pathName(drvr_pin)<<std::endl;
+    logger_->report("[Warning] Failed to retrieve corner for driver pin: {}", sdc_network_->pathName(drvr_pin));    
   }
   root->fanout = root->children.size();
   tree->setRoot(root);
   buffered_trees_pre_.push_back(tree);
 }
+
 
 //YL
 void RepairDesign::createPostBufferedTree(int x,
