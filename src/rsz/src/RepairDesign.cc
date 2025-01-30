@@ -160,8 +160,8 @@ void RepairDesign::repairDesign(
                         fanout_violations,
                         length_violations);
     // YL: store buffered trees
-    analyzeBufferedTrees();
-    std::cout << "--------------Store buffered trees to the csv file----------------" << std::endl;
+    saveBufferedTrees();
+    std::cout << "--------------Save buffered trees to the csv file----------------" << std::endl;
     // std::cout << "Buffered Trees Pre Size (#net): " << buffered_trees_pre_.size() << std::endl;
     // std::cout << "Buffered Trees Post Size (#buffered net): " << buffered_trees_post_.size() << std::endl;
     // std::cout << "#buffered net (test): " << repaired_net_count << std::endl;
@@ -1094,6 +1094,12 @@ void RepairDesign::repairNetWire(
     int& wire_length,  // dbu
     PinSeq& load_pins)
 {
+    if(store_buffered_trees_flag_==true)
+  {
+    repairNetWire_update(bnet, level, wire_length, load_pins);
+    return;
+  }
+
   debugPrint(logger_,
              RSZ,
              "repair_net",
@@ -1322,6 +1328,12 @@ void RepairDesign::repairNetJunc(
     int& wire_length,  // dbu
     PinSeq& load_pins)
 {
+  if(store_buffered_trees_flag_==true)
+  {
+    repairNetJunc_update(bnet, level, wire_length, load_pins);
+    return;
+  }
+
   debugPrint(logger_,
              RSZ,
              "repair_net",
@@ -1757,7 +1769,24 @@ void RepairDesign::makeRepeater(const char* reason,
                                 float& repeater_cap,
                                 float& repeater_fanout,
                                 float& repeater_max_slew)
-{
+{ 
+  //YL
+  if (store_buffered_trees_flag_ == true) {
+    float drvr_output_cap=0.0;
+    float drvr_output_slew=0.0;
+    makeRepeater_update(reason,
+                        loc,
+                        buffer_cell,
+                        resize,
+                        level,
+                        load_pins,
+                        repeater_cap,
+                        repeater_fanout,
+                        repeater_max_slew,
+                        drvr_output_cap,
+                        drvr_output_slew);
+    return;
+  }
   Net* out_net;
   Pin *repeater_in_pin, *repeater_out_pin;
   makeRepeater(reason,
@@ -1776,7 +1805,6 @@ void RepairDesign::makeRepeater(const char* reason,
 }
 
 ////////////////////////////////////////////////////////////////
-
 void RepairDesign::makeRepeater(const char* reason,
                                 int x,
                                 int y,
@@ -1792,6 +1820,28 @@ void RepairDesign::makeRepeater(const char* reason,
                                 Pin*& repeater_in_pin,
                                 Pin*& repeater_out_pin)
 {
+  if (store_buffered_trees_flag_ == true) {
+    float drvr_output_cap=0.0;
+    float drvr_output_slew=0.0;
+    
+    makeRepeater_update(reason,
+                        x,
+                        y,
+                        buffer_cell,
+                        resize,
+                        level,
+                        load_pins,
+                        repeater_cap,
+                        repeater_fanout,
+                        repeater_max_slew,
+                        out_net,
+                        repeater_in_pin,
+                        repeater_out_pin,
+                        drvr_output_cap,
+                        drvr_output_slew);
+    return;
+  }
+ 
   LibertyPort *buffer_input_port, *buffer_output_port;
   buffer_cell->bufferPorts(buffer_input_port, buffer_output_port);
   string buffer_name = resizer_->makeUniqueInstName(reason);
@@ -1894,14 +1944,8 @@ void RepairDesign::makeRepeater(const char* reason,
   sta_->connectPin(buffer, buffer_input_port, in_net);
   sta_->connectPin(buffer, buffer_output_port, out_net);
 
-
   resizer_->parasiticsInvalid(in_net);
   resizer_->parasiticsInvalid(out_net);
-  
-  //YL: do not consider resizing
-  if (buffered_tree_->getRoot()){
-    resize = false;
-  }
 
   // Resize repeater as we back up by levels.
   if (resize) {
@@ -1913,36 +1957,18 @@ void RepairDesign::makeRepeater(const char* reason,
 
   repeater_in_pin = network_->findPin(buffer, buffer_input_port);
   repeater_out_pin = network_->findPin(buffer, buffer_output_port);
-  repeater_cap = resizer_->portCapacitance(buffer_input_port, corner_);
-  
-  //YL
-  //update buffered tree
-  if (buffered_tree_->getRoot()){
-    std::cout << "--------Add a buffer and the buffer count is ----" << inserted_buffer_count_<< std::endl;
-    std::cout << "Start constructing buffered tree...\n";
-    createPostBufferedTree(x,
-                        y,
-                        buffer_cell,
-                        // Return values.
-                        load_pins,
-                        repeater_fanout,
-                        repeater_max_slew,
-                        repeater_in_pin,
-                        repeater_out_pin,
-                        repeater_cap);
-    //YL test
-    std::cout<<"Start testing buffered tree...\n";
-    testBufferedTree(repeater_in_pin,repeater_out_pin, in_net, out_net);
-    std::cout<<"End testing buffered tree...\n";
-
-  }
 
   load_pins.clear();
   load_pins.push_back(repeater_in_pin);
-  // repeater_cap = resizer_->portCapacitance(buffer_input_port, corner_);
+  repeater_cap = resizer_->portCapacitance(buffer_input_port, corner_);
   repeater_fanout = resizer_->portFanoutLoad(buffer_input_port);
   repeater_max_slew = bufferInputMaxSlew(buffer_cell, corner_);
 }
+
+
+
+
+
 
 bool RepairDesign::hasInputPort(const Net* net)
 {
@@ -2063,7 +2089,6 @@ void RepairDesign::writeBufferedTrees(const std::string& file_name)
 }
 
 
-
 void RepairDesign::repairDesign_update(
   double max_wire_length,  // zero for none (meters)
   double slew_margin,
@@ -2161,6 +2186,7 @@ void RepairDesign::repairDesign_update(
       std::cout << "Begin Pre Tree Print\n";
       buffered_trees_pre_.back()->printTree();
       std::cout << "End Pre Tree Print\n";
+
       buffered_tree_ = buffered_trees_pre_.back(); //YL
       repairNet_update(net,
                 drvr_pin,
@@ -2218,6 +2244,8 @@ void RepairDesign::repairNet_update(Net* net,
                              int& fanout_violations,
                              int& length_violations)
 {
+  // update the flag
+  store_buffered_trees_flag_ = true;
   // Hands off special nets.
   if (!db_network_->isSpecial(net)) {
     debugPrint(logger_,
@@ -2338,7 +2366,679 @@ void RepairDesign::repairNet_update(Net* net,
       std::cout << "------------Repaired net count------------- " << repaired_net_count << std::endl;
     }
   }
+  store_buffered_trees_flag_ = false;
 }
+
+
+//YL
+void RepairDesign::makeRepeater_update(const char* reason,
+                                const Point& loc,
+                                LibertyCell* buffer_cell,
+                                bool resize,
+                                int level,
+                                // Return values.
+                                PinSeq& load_pins,
+                                float& repeater_cap,
+                                float& repeater_fanout,
+                                float& repeater_max_slew,
+                                float drvr_output_cap,
+                                float drvr_output_slew)
+{ 
+
+  Net* out_net;
+  Pin *repeater_in_pin, *repeater_out_pin;
+  makeRepeater_update(reason,
+               loc.getX(),
+               loc.getY(),
+               buffer_cell,
+               resize,
+               level,
+               load_pins,
+               repeater_cap,
+               repeater_fanout,
+               repeater_max_slew,
+               out_net,
+               repeater_in_pin,
+               repeater_out_pin,
+               drvr_output_cap, //YL
+               drvr_output_slew);//YL
+}
+
+void RepairDesign::makeRepeater_update(const char* reason,
+                                int x,
+                                int y,
+                                LibertyCell* buffer_cell,
+                                bool resize,
+                                int level,
+                                // Return values.
+                                PinSeq& load_pins,
+                                float& repeater_cap,
+                                float& repeater_fanout,
+                                float& repeater_max_slew,
+                                Net*& out_net,
+                                Pin*& repeater_in_pin,
+                                Pin*& repeater_out_pin,
+                                float drvr_output_cap,
+                                float drvr_output_slew)
+{
+  LibertyPort *buffer_input_port, *buffer_output_port;
+  buffer_cell->bufferPorts(buffer_input_port, buffer_output_port);
+  string buffer_name = resizer_->makeUniqueInstName(reason);
+  debugPrint(logger_,
+             RSZ,
+             "repair_net",
+             2,
+             "{:{}s}{} {} {} ({} {})",
+             "",
+             level,
+             reason,
+             buffer_name.c_str(),
+             buffer_cell->name(),
+             units_->distanceUnit()->asString(dbuToMeters(x), 1),
+             units_->distanceUnit()->asString(dbuToMeters(y), 1));
+
+  // Inserting a buffer is complicated by the fact that verilog netlists
+  // use the net name for input and output ports. This means the ports
+  // cannot be moved to a different net.
+
+  // This cannot depend on the net in caller because the buffer may be inserted
+  // between the driver and the loads changing the net as the repair works its
+  // way from the loads to the driver.
+
+  Net *net = nullptr, *in_net;
+  bool preserve_outputs = false;
+  for (const Pin* pin : load_pins) {
+    if (network_->isTopLevelPort(pin)) {
+      net = network_->net(network_->term(pin));
+      if (network_->direction(pin)->isAnyOutput()) {
+        preserve_outputs = true;
+        break;
+      }
+    } else {
+      net = network_->net(pin);
+      Instance* inst = network_->instance(pin);
+      if (resizer_->dontTouch(inst)) {
+        preserve_outputs = true;
+        break;
+      }
+    }
+  }
+  Instance* parent = db_network_->topInstance();
+
+  // If the net is driven by an input port,
+  // use the net as the repeater input net so the port stays connected to it.
+  if (hasInputPort(net) || !preserve_outputs) {
+    in_net = net;
+    out_net = resizer_->makeUniqueNet();
+    // Copy signal type to new net.
+    dbNet* out_net_db = db_network_->staToDb(out_net);
+    dbNet* in_net_db = db_network_->staToDb(in_net);
+    out_net_db->setSigType(in_net_db->getSigType());
+
+    // Move load pins to out_net.
+    for (const Pin* pin : load_pins) {
+      Port* port = network_->port(pin);
+      Instance* inst = network_->instance(pin);
+
+      // do not disconnect/reconnect don't touch instances
+      if (resizer_->dontTouch(inst)) {
+        continue;
+      }
+      sta_->disconnectPin(const_cast<Pin*>(pin));
+      sta_->connectPin(inst, port, out_net);
+    }
+  } else {
+    // One of the loads is an output port.
+    // Use the net as the repeater output net so the port stays connected to it.
+    in_net = resizer_->makeUniqueNet();
+    out_net = net;
+    // Copy signal type to new net.
+    dbNet* out_net_db = db_network_->staToDb(out_net);
+    dbNet* in_net_db = db_network_->staToDb(in_net);
+    in_net_db->setSigType(out_net_db->getSigType());
+
+    // Move non-repeater load pins to in_net.
+    PinSet load_pins1(db_network_);
+    for (const Pin* pin : load_pins) {
+      load_pins1.insert(pin);
+    }
+
+    NetPinIterator* pin_iter = network_->pinIterator(out_net);
+    while (pin_iter->hasNext()) {
+      const Pin* pin = pin_iter->next();
+      if (!load_pins1.hasKey(pin)) {
+        Port* port = network_->port(pin);
+        Instance* inst = network_->instance(pin);
+        sta_->disconnectPin(const_cast<Pin*>(pin));
+        sta_->connectPin(inst, port, in_net);
+      }
+    }
+  }
+
+  Point buf_loc(x, y);
+  Instance* buffer
+      = resizer_->makeBuffer(buffer_cell, buffer_name.c_str(), parent, buf_loc);
+  inserted_buffer_count_++;
+
+  sta_->connectPin(buffer, buffer_input_port, in_net);
+  sta_->connectPin(buffer, buffer_output_port, out_net);
+
+
+  resizer_->parasiticsInvalid(in_net);
+  resizer_->parasiticsInvalid(out_net);
+
+  if (resize) {
+    Pin* buffer_out_pin = network_->findPin(buffer, buffer_output_port);
+    resizer_->resizeToTargetSlew(buffer_out_pin);
+    buffer_cell = network_->libertyCell(buffer);
+    buffer_cell->bufferPorts(buffer_input_port, buffer_output_port);
+  }
+
+  repeater_in_pin = network_->findPin(buffer, buffer_input_port);
+  repeater_out_pin = network_->findPin(buffer, buffer_output_port);
+  
+  
+  repeater_cap = resizer_->portCapacitance(buffer_input_port, corner_);
+  repeater_fanout = resizer_->portFanoutLoad(buffer_input_port);
+  repeater_max_slew = bufferInputMaxSlew(buffer_cell, corner_);
+  
+  logger_->report("--------Add a buffer and the buffer count is ----" + std::to_string(inserted_buffer_count_));
+  logger_->report("Begin createPostBufferedTree...\n");
+  createPostBufferedTree(buffer, 
+    buffer_cell, 
+    x, y, 
+    load_pins,
+    repeater_fanout,
+    repeater_in_pin,
+    repeater_out_pin,
+    repeater_cap,
+    drvr_output_cap,
+    drvr_output_slew);
+  logger_->report("End createPostBufferedTree...\n");
+  // for testing
+  // std::cout<<"Start testing buffered tree...\n";
+  // testBufferedTree(repeater_in_pin,repeater_out_pin, in_net, out_net);
+  //std::cout<<"End testing buffered tree...\n";
+  
+  load_pins.clear();
+  load_pins.push_back(repeater_in_pin);
+}
+
+
+
+
+void RepairDesign::repairNetWire_update(
+    const BufferedNetPtr& bnet,
+    int level,
+    // Return values.
+    // Remaining parasiics after repeater insertion.
+    int& wire_length,  // dbu
+    PinSeq& load_pins)
+{
+  debugPrint(logger_,
+             RSZ,
+             "repair_net",
+             3,
+             "{:{}s}{}",
+             "",
+             level,
+             bnet->to_string(resizer_));
+  int wire_length_ref;
+  repairNet(bnet->ref(), level + 1, wire_length_ref, load_pins);
+  float max_load_slew = bnet->maxLoadSlew();
+  float max_load_slew_margined
+      = max_load_slew;  // maxSlewMargined(max_load_slew);
+
+  Point to_loc = bnet->ref()->location();
+  int to_x = to_loc.getX();
+  int to_y = to_loc.getY();
+  Point from_loc = bnet->location();
+  int length = Point::manhattanDistance(from_loc, to_loc);
+  wire_length = wire_length_ref + length;
+  int from_x = from_loc.getX();
+  int from_y = from_loc.getY();
+  debugPrint(logger_,
+             RSZ,
+             "repair_net",
+             3,
+             "{:{}s}wl={} l={}",
+             "",
+             level,
+             units_->distanceUnit()->asString(dbuToMeters(wire_length), 1),
+             units_->distanceUnit()->asString(dbuToMeters(length), 1));
+  double length1 = dbuToMeters(length);
+  double wire_res, wire_cap;
+  bnet->wireRC(corner_, resizer_, wire_res, wire_cap);
+  // ref_cap includes ref's wire cap
+  double ref_cap = bnet->ref()->cap();
+  double load_cap = length1 * wire_cap + ref_cap;
+
+  float r_drvr = resizer_->driveResistance(drvr_pin_);
+  double load_slew = (r_drvr + dbuToMeters(wire_length) * wire_res) * load_cap
+                     * elmore_skew_factor_;
+  debugPrint(logger_,
+             RSZ,
+             "repair_net",
+             3,
+             "{:{}s}load_slew={} r_drvr={}",
+             "",
+             level,
+             delayAsString(load_slew, this, 3),
+             units_->resistanceUnit()->asString(r_drvr, 3));
+
+  LibertyCell* buffer_cell = resizer_->findTargetCell(
+      resizer_->buffer_lowest_drive_, load_cap, false);
+  bnet->setCapacitance(load_cap);
+  bnet->setFanout(bnet->ref()->fanout());
+
+  // Check that the slew limit specified is within the bounds of reason.
+  pre_checks_->checkSlewLimit(ref_cap, max_load_slew);
+  //============================================================================
+  // Back up from pt to from_pt adding repeaters as necessary for
+  // length/max_cap/max_slew violations.
+  while ((max_length_ > 0 && wire_length > max_length_)
+         || (wire_cap > 0.0 && max_cap_ > 0.0 && load_cap > max_cap_)
+         || load_slew > max_load_slew_margined) {
+    // Make the wire a bit shorter than necessary to allow for
+    // offset from instance origin to pin and detailed placement movement.
+    constexpr double length_margin = .05;
+    bool split_wire = false;
+    bool resize = true;
+    // Distance from repeater to ref_.
+    //              length
+    // from----------------------------to/ref
+    //
+    //                     split_length
+    // from-------repeater-------------to/ref
+    int split_length = std::numeric_limits<int>::max();
+    if (max_length_ > 0 && wire_length > max_length_) {
+      debugPrint(logger_,
+                 RSZ,
+                 "repair_net",
+                 3,
+                 "{:{}s}max wire length violation {} > {}",
+                 "",
+                 level,
+                 units_->distanceUnit()->asString(dbuToMeters(wire_length), 1),
+                 units_->distanceUnit()->asString(dbuToMeters(max_length_), 1));
+      split_length = min(max(max_length_ - wire_length_ref, 0), length / 2);
+
+      split_wire = true;
+    }
+    if (wire_cap > 0.0 && load_cap > max_cap_) {
+      debugPrint(logger_,
+                 RSZ,
+                 "repair_net",
+                 3,
+                 "{:{}s}max cap violation {} > {}",
+                 "",
+                 level,
+                 units_->capacitanceUnit()->asString(load_cap, 3),
+                 units_->capacitanceUnit()->asString(max_cap_, 3));
+      if (ref_cap > max_cap_) {
+        split_length = 0;
+        split_wire = false;
+      } else {
+        split_length
+            = min(split_length, metersToDbu((max_cap_ - ref_cap) / wire_cap));
+        split_wire = true;
+      }
+    }
+    if (load_slew > max_load_slew_margined) {
+      debugPrint(logger_,
+                 RSZ,
+                 "repair_net",
+                 3,
+                 "{:{}s}max load slew violation {} > {}",
+                 "",
+                 level,
+                 delayAsString(load_slew, this, 3),
+                 delayAsString(max_load_slew_margined, this, 3));
+      // Using elmore delay to approximate wire
+      // load_slew = (Rbuffer + (L+Lref)*Rwire) * (L*Cwire + Cref) *
+      // elmore_skew_factor_ Setting this to max_load_slew_margined is a
+      // quadratic in L L^2*Rwire*Cwire + L*(Rbuffer*Cwire + Rwire*Cref +
+      // Rwire*Cwire*Lref)
+      //   + Rbuffer*Cref - max_load_slew_margined/elmore_skew_factor_
+      // Solve using quadradic eqn for L.
+      float wire_length_ref1 = dbuToMeters(wire_length_ref);
+      float r_buffer = resizer_->bufferDriveResistance(buffer_cell);
+      float a = wire_res * wire_cap;
+      float b = r_buffer * wire_cap + wire_res * ref_cap
+                + wire_res * wire_cap * wire_length_ref1;
+      float c = r_buffer * ref_cap + wire_length_ref1 * wire_res * ref_cap
+                - max_load_slew_margined / elmore_skew_factor_;
+      float l = (-b + sqrt(b * b - 4 * a * c)) / (2 * a);
+      if (l >= 0.0) {
+        if (split_length > 0.0) {
+          split_length = min(split_length, metersToDbu(l));
+        } else {
+          split_length = metersToDbu(l);
+        }
+        split_wire = true;
+        resize = false;
+      } else {
+        split_length = 0;
+        split_wire = false;
+        resize = true;
+      }
+    }
+
+    if (split_wire) {
+      debugPrint(
+          logger_,
+          RSZ,
+          "repair_net",
+          3,
+          "{:{}s}split length={}",
+          "",
+          level,
+          units_->distanceUnit()->asString(dbuToMeters(split_length), 1));
+      // Distance from to_pt to repeater backward toward from_pt.
+      // Note that split_length can be longer than the wire length
+      // because it is the maximum value that satisfies max slew/cap.
+      double buf_dist = (split_length >= length)
+                            ? length
+                            : split_length * (1.0 - length_margin);
+      double dx = from_x - to_x;
+      double dy = from_y - to_y;
+      double d = (length == 0) ? 0.0 : buf_dist / length;
+      int buf_x = to_x + d * dx;
+      int buf_y = to_y + d * dy;
+      float repeater_cap, repeater_fanout;
+
+      // makeRepeater_update("wire",
+      //              Point(buf_x, buf_y),
+      //              buffer_cell,
+      //              resize,
+      //              level,
+      //              load_pins,
+      //              repeater_cap,
+      //              repeater_fanout,
+      //              max_load_slew);
+
+      // --------- YL: update repeater_cap -------------
+      LibertyPort *buffer_input_port, *buffer_output_port;
+      buffer_cell->bufferPorts(buffer_input_port, buffer_output_port);
+      repeater_cap = resizer_->portCapacitance(buffer_input_port, corner_);
+      // -------------------------------------------------
+
+      // Update for the next round.
+      length -= buf_dist;
+      wire_length = length;
+      to_x = buf_x;
+      to_y = buf_y;
+
+      length1 = dbuToMeters(length);
+      wire_length_ref = 0.0;
+      load_cap = repeater_cap + length1 * wire_cap; // YL: driver output cap
+      ref_cap = repeater_cap;
+      load_slew
+          = (r_drvr + length1 * wire_res) * load_cap * elmore_skew_factor_;
+          //YL: driver output slew
+      
+      makeRepeater_update("wire",
+              Point(buf_x, buf_y),
+              buffer_cell,
+              resize,
+              level,
+              load_pins,
+              repeater_cap,
+              repeater_fanout,
+              max_load_slew,
+              load_cap,   // driver updated output cap 
+              load_slew); // driver updated output slew
+
+      max_load_slew_margined = max_load_slew;  // maxSlewMargined(max_load_slew);
+      buffer_cell = resizer_->findTargetCell(
+          resizer_->buffer_lowest_drive_, load_cap, false);
+
+      bnet->setCapacitance(load_cap);
+      bnet->setFanout(repeater_fanout);
+      bnet->setMaxLoadSlew(max_load_slew);
+
+      debugPrint(logger_,
+                 RSZ,
+                 "repair_net",
+                 3,
+                 "{:{}s}l={}",
+                 "",
+                 level,
+                 units_->distanceUnit()->asString(length1, 1));
+    } else {
+      break;
+    }
+  }
+}
+
+
+void RepairDesign::repairNetJunc_update(
+    const BufferedNetPtr& bnet,
+    int level,
+    // Return values.
+    // Remaining parasiics after repeater insertion.
+    int& wire_length,  // dbu
+    PinSeq& load_pins)
+{
+  debugPrint(logger_,
+             RSZ,
+             "repair_net",
+             3,
+             "{:{}s}{}",
+             "",
+             level,
+             bnet->to_string(resizer_));
+  Point loc = bnet->location();
+  double wire_res, wire_cap;
+  resizer_->wireSignalRC(corner_, wire_res, wire_cap);
+
+  BufferedNetPtr left = bnet->ref();
+  int wire_length_left = 0;
+  PinSeq loads_left;
+  repairNet(left, level + 1, wire_length_left, loads_left);
+  float cap_left = left->cap();
+  float fanout_left = left->fanout();
+  float max_load_slew_left = left->maxLoadSlew();
+
+  BufferedNetPtr right = bnet->ref2();
+  int wire_length_right = 0;
+  PinSeq loads_right;
+  repairNet(right, level + 1, wire_length_right, loads_right);
+  float cap_right = right->cap();
+  float fanout_right = right->fanout();
+  float max_load_slew_right = right->maxLoadSlew();
+
+  debugPrint(logger_,
+             RSZ,
+             "repair_net",
+             3,
+             "{:{}s}left  l={} cap={} fanout={}",
+             "",
+             level,
+             units_->distanceUnit()->asString(dbuToMeters(wire_length_left), 1),
+             units_->capacitanceUnit()->asString(cap_left, 3),
+             fanout_left);
+  debugPrint(
+      logger_,
+      RSZ,
+      "repair_net",
+      3,
+      "{:{}s}right l={} cap={} fanout={}",
+      "",
+      level,
+      units_->distanceUnit()->asString(dbuToMeters(wire_length_right), 1),
+      units_->capacitanceUnit()->asString(cap_right, 3),
+      fanout_right);
+
+  wire_length = wire_length_left + wire_length_right;
+  float load_cap = cap_left + cap_right;
+  float max_load_slew = min(max_load_slew_left, max_load_slew_right);
+  float max_load_slew_margined
+      = max_load_slew;  // maxSlewMargined(max_load_slew);
+  LibertyCell* buffer_cell = resizer_->findTargetCell(
+      resizer_->buffer_lowest_drive_, load_cap, false);
+
+  // Check for violations when the left/right branches are combined.
+  // Add a buffer to left or right branch to stay under the max
+  // cap/length/fanout.
+  bool repeater_left = false;
+  bool repeater_right = false;
+  float r_drvr = resizer_->driveResistance(drvr_pin_);
+  float load_slew = (r_drvr + dbuToMeters(wire_length) * wire_res) * load_cap
+                    * elmore_skew_factor_;
+  bool load_slew_violation = load_slew > max_load_slew_margined;
+  const char* repeater_reason = nullptr;
+  // Driver slew checks were converted to max cap.
+  if (load_slew_violation) {
+    debugPrint(logger_,
+               RSZ,
+               "repair_net",
+               3,
+               "{:{}s}load slew violation {} > {}",
+               "",
+               level,
+               delayAsString(load_slew, this, 3),
+               delayAsString(max_load_slew_margined, this, 3));
+    float slew_left = (r_drvr + dbuToMeters(wire_length_left) * wire_res)
+                      * cap_left * elmore_skew_factor_;
+    float slew_slack_left = maxSlewMargined(max_load_slew_left) - slew_left;
+    float slew_right = (r_drvr + dbuToMeters(wire_length_right) * wire_res)
+                       * cap_right * elmore_skew_factor_;
+    float slew_slack_right = maxSlewMargined(max_load_slew_right) - slew_right;
+    debugPrint(logger_,
+               RSZ,
+               "repair_net",
+               3,
+               "{:{}s} slew slack left={} right={}",
+               "",
+               level,
+               delayAsString(slew_slack_left, this, 3),
+               delayAsString(slew_slack_right, this, 3));
+    // Isolate the branch with the smaller slack.
+    if (slew_slack_left < slew_slack_right) {
+      repeater_left = true;
+    } else {
+      repeater_right = true;
+    }
+    repeater_reason = "load_slew";
+  }
+  bool cap_violation = (cap_left + cap_right) > max_cap_;
+  if (cap_violation) {
+    debugPrint(logger_, RSZ, "repair_net", 3, "{:{}s}cap violation", "", level);
+    if (cap_left > cap_right) {
+      repeater_left = true;
+    } else {
+      repeater_right = true;
+    }
+    repeater_reason = "max_cap";
+  }
+  bool length_violation
+      = max_length_ > 0 && (wire_length_left + wire_length_right) > max_length_;
+  if (length_violation) {
+    debugPrint(
+        logger_, RSZ, "repair_net", 3, "{:{}s}length violation", "", level);
+    if (wire_length_left > wire_length_right) {
+      repeater_left = true;
+    } else {
+      repeater_right = true;
+    }
+    repeater_reason = "max_length";
+  }
+  
+  // YL: calculate the driver output cap and slew
+  float drvr_output_cap = cap_left + cap_right;
+  if(repeater_left) {
+    wire_length_left = 0;
+  }
+  if(repeater_right) {
+    wire_length_right = 0;
+  }
+  float drvr_output_slew = (r_drvr + dbuToMeters(wire_length_left + wire_length_right) * wire_res) * drvr_output_cap
+                  * elmore_skew_factor_;
+
+  if (repeater_left) {
+    makeRepeater_update(repeater_reason,
+                 loc,
+                 buffer_cell,
+                 true,
+                 level,
+                 loads_left,
+                 cap_left,
+                 fanout_left,
+                 max_load_slew_left,
+                 drvr_output_cap, 
+                 drvr_output_slew);
+    wire_length_left = 0;
+  }
+  if (repeater_right) {
+    makeRepeater_update(repeater_reason,
+                 loc,
+                 buffer_cell,
+                 true,
+                 level,
+                 loads_right,
+                 cap_right,
+                 fanout_right,
+                 max_load_slew_right,
+                 drvr_output_cap, 
+                 drvr_output_slew);
+    wire_length_right = 0;
+  }
+
+  // Update after left/right repeaters are inserted.
+  wire_length = wire_length_left + wire_length_right;
+
+  bnet->setCapacitance(cap_left + cap_right); //driver output cap
+  bnet->setFanout(fanout_right + fanout_left);
+  bnet->setMaxLoadSlew(min(max_load_slew_left, max_load_slew_right));
+
+  // Union left/right load pins.
+  for (const Pin* load_pin : loads_left) {
+    load_pins.push_back(load_pin);
+  }
+  for (const Pin* load_pin : loads_right) {
+    load_pins.push_back(load_pin);
+  }
+}
+
+//YL: verfity the constructed buffered tree
+void RepairDesign::testBufferedTree(Pin*& repeater_in_pin,
+                        Pin*& repeater_out_pin, 
+                        Net*& in_net, 
+                        Net*& out_net)
+{
+  std::string buffer_in_pin_name = sdc_network_->pathName(repeater_in_pin);
+  std::string buffer_out_pin_name = sdc_network_->pathName(repeater_out_pin);
+  std::cout<<"Buffer in pin name: "<<buffer_in_pin_name<<std::endl;
+  std::cout<<"Buffer out pin name: "<<buffer_out_pin_name<<std::endl;
+  NetConnectedPinIterator* pin_iter_in = network_->connectedPinIterator(in_net);
+  std::cout<<"In pin name: ";
+  while (pin_iter_in->hasNext()) {
+    const Pin* pin = pin_iter_in->next();
+    std::string in_pin_name = sdc_network_->pathName(pin);
+    Point sink_loc = db_network_->location(pin);
+    float in_pin_x = dbuToMeters(sink_loc.getX()) * 1e6;
+    float in_pin_y = dbuToMeters(sink_loc.getY()) * 1e6;
+    std::cout<<" "<<in_pin_name<<" ("<<in_pin_x<<", "<<in_pin_y<<") \t";
+  }
+
+  NetConnectedPinIterator* pin_iter_out = network_->connectedPinIterator(out_net);
+  std::cout<<"\n Out pin name: ";
+  while (pin_iter_out->hasNext()) {
+    const Pin* pin = pin_iter_out->next();
+    std::string out_pin_name = sdc_network_->pathName(pin);
+    Point sink_loc = db_network_->location(pin);
+    float out_pin_x = dbuToMeters(sink_loc.getX()) * 1e6;
+    float out_pin_y = dbuToMeters(sink_loc.getY()) * 1e6;
+    std::cout<<" "<<out_pin_name<<" ("<<out_pin_x<<",  "<<out_pin_y<<") \t";
+  }
+
+}
+
+                     
+// ----------------------------------------------------------------------------
+//  New functions for MLBuf
+// ----------------------------------------------------------------------------
 
 
 float RepairDesign::getOutputCap(const Pin* drvr_pin, float& max_cap)
@@ -2457,17 +3157,17 @@ void RepairDesign::createPreBufferedTree(
 }
 
 
-//YL
-void RepairDesign::createPostBufferedTree(int x,
-  int y,
+void RepairDesign::createPostBufferedTree(
+  Instance* buffer_inst,
   LibertyCell* buffer_cell,
-  // Return values.
+  int x, int y,
   PinSeq& load_pins,
-  float& repeater_fanout,
-  float& repeater_max_slew,
+  float repeater_fanout,
   Pin*& repeater_in_pin,
   Pin*& repeater_out_pin,
-  float& repeater_cap)
+  float repeater_input_cap,
+  float drvr_output_cap,
+  float drvr_output_slew)
 {
   // 1. create buffer node
   BufferedTreeNodePtr buffer = std::make_shared<BufferedTreeNode>();
@@ -2475,21 +3175,17 @@ void RepairDesign::createPostBufferedTree(int x,
   buffer->x = dbuToMeters(x) * 1e6;
   buffer->y = dbuToMeters(y) * 1e6;
   // const Corner* corner1;
+
   // Check Capacitance
   float max_cap = INF;
+  //YL: does the buffer need output_cap?
   buffer->output_cap = getOutputCap(repeater_out_pin, max_cap);
-  // buffer->input_cap = resizer_->portCapacitance(buffer_input_port, corner_);
-  buffer->input_cap = repeater_cap;
+  buffer->input_cap = repeater_input_cap;
+  
+  //YL: does the buffer need output_slew?
+  buffer->output_slew = -1.0;
+  buffer->input_slew = drvr_output_slew;
 
-  // check slew
-  float buffer_output_slew = resizer_->bufferSlew(
-            buffer_cell, buffer->output_cap, resizer_->tgt_slew_dcalc_ap_);
-  buffer->output_slew = buffer_output_slew;
-  float input_slew; 
-  float output_slew;
-  getSlew(repeater_out_pin, max_cap, output_slew, input_slew);  
-  // buffer->output_slew = output_slew;
-  buffer->input_slew = input_slew;
   buffer->max_output_cap = max_cap;
   buffer->node_type = BufferedTreeNodeType::BUFFER;
 
@@ -2497,7 +3193,13 @@ void RepairDesign::createPostBufferedTree(int x,
   BufferedTreeNodePtr root = buffered_tree_->getRoot();
   buffer->parent = root;
   root->children.push_back(buffer);
-
+  // YL: Update output cap and output slew of the driver
+  if (drvr_output_cap !=0 and drvr_output_slew !=0)
+  {
+    root->output_cap = drvr_output_cap;
+    root->output_slew = drvr_output_slew;
+  }
+  
   // 3. find sinks driven by the buffer
   std::vector<BufferedTreeNodePtr> nodes_to_remove;
   auto& root_children = buffered_tree_->getRoot()->children;
@@ -2513,6 +3215,10 @@ void RepairDesign::createPostBufferedTree(int x,
           child->parent = buffer;
           nodes_to_remove.push_back(child);
       }
+      //YL: update input slew of the sink
+      else if (drvr_output_slew!=0) {
+        child->input_slew = drvr_output_slew;
+      }
   }
 
   // 4. Remove loads from the root
@@ -2522,45 +3228,17 @@ void RepairDesign::createPostBufferedTree(int x,
           root_children.end()
       );
   }
-  std::cout << "createPostBufferedTree finished flag (add one buffer to the buffered tree...)\n";
-}
 
-//YL: verfity the constructed buffered tree
-void RepairDesign::testBufferedTree(Pin*& repeater_in_pin,
-                        Pin*& repeater_out_pin, 
-                        Net*& in_net, 
-                        Net*& out_net)
-{
-  std::string buffer_in_pin_name = sdc_network_->pathName(repeater_in_pin);
-  std::string buffer_out_pin_name = sdc_network_->pathName(repeater_out_pin);
-  std::cout<<"Buffer in pin name: "<<buffer_in_pin_name<<std::endl;
-  std::cout<<"Buffer out pin name: "<<buffer_out_pin_name<<std::endl;
-  NetConnectedPinIterator* pin_iter_in = network_->connectedPinIterator(in_net);
-  std::cout<<"In pin name: ";
-  while (pin_iter_in->hasNext()) {
-    const Pin* pin = pin_iter_in->next();
-    std::string in_pin_name = sdc_network_->pathName(pin);
-    Point sink_loc = db_network_->location(pin);
-    float in_pin_x = dbuToMeters(sink_loc.getX()) * 1e6;
-    float in_pin_y = dbuToMeters(sink_loc.getY()) * 1e6;
-    std::cout<<" "<<in_pin_name<<" ("<<in_pin_x<<", "<<in_pin_y<<") \t";
-  }
-
-  NetConnectedPinIterator* pin_iter_out = network_->connectedPinIterator(out_net);
-  std::cout<<"\n Out pin name: ";
-  while (pin_iter_out->hasNext()) {
-    const Pin* pin = pin_iter_out->next();
-    std::string out_pin_name = sdc_network_->pathName(pin);
-    Point sink_loc = db_network_->location(pin);
-    float out_pin_x = dbuToMeters(sink_loc.getX()) * 1e6;
-    float out_pin_y = dbuToMeters(sink_loc.getY()) * 1e6;
-    std::cout<<" "<<out_pin_name<<" ("<<out_pin_x<<",  "<<out_pin_y<<") \t";
-  }
+  //5. update fanout
+  root->fanout = root->children.size();
+  buffer->fanout = buffer->children.size();
+  // tree->setRoot(root);
+  // buffered_trees_post_.push_back(tree);
 
 }
                         
 // ----------------------------------------------------------------------------
-//  BufferedTree statistical analysis 
+//  Save Buffered Trees
 // ----------------------------------------------------------------------------
 
 // count the number of sinks and buffers in the tree
@@ -2650,7 +3328,7 @@ void RepairDesign::printTreeToCSV(const std::vector<BufferedTreePtr>& trees, con
 }
 
 // analyze and save
-void RepairDesign::analyzeBufferedTrees() {
+void RepairDesign::saveBufferedTrees() {
   std::cout << "Total Trees (Pre Repair): " << buffered_trees_pre_.size() << std::endl;
   std::cout << "Total Trees (Post Repair): " << buffered_trees_post_.size() << std::endl;
 

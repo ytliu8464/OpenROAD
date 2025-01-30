@@ -43,6 +43,7 @@
 #include "sta/Corner.hh"
 #include "sta/Delay.hh"
 #include "sta/GraphClass.hh"
+#include "sta/Liberty.hh"
 #include "sta/LibertyClass.hh"
 #include "sta/NetworkClass.hh"
 #include "utl/Logger.h"
@@ -317,6 +318,49 @@ class RepairDesign : dbStaState
                  int& fanout_violations,
                  int& length_violations);
 
+
+  void makeRepeater_update(const char* reason,
+                    int x,
+                    int y,
+                    LibertyCell* buffer_cell,
+                    bool resize,
+                    int level,
+                    // Return values.
+                    PinSeq& load_pins,
+                    float& repeater_cap,
+                    float& repeater_fanout,
+                    float& repeater_max_slew,
+                    Net*& out_net,
+                    Pin*& repeater_in_pin,
+                    Pin*& repeater_out_pin,
+                    float drvr_output_cap,
+                    float drvr_output_slew);
+  
+  void repairNetWire_update(
+    const BufferedNetPtr& bnet,
+    int level,
+    int& wire_length,  // dbu
+    PinSeq& load_pins);
+
+  void repairNetJunc_update(
+    const BufferedNetPtr& bnet,
+    int level,
+    int& wire_length,  // dbu
+    PinSeq& load_pins);
+  
+  void makeRepeater_update(const char* reason,
+                    const Point& loc,
+                    LibertyCell* buffer_cell,
+                    bool resize,
+                    int level,
+                    // Return values.
+                    PinSeq& load_pins,
+                    float& repeater_cap,
+                    float& repeater_fanout,
+                    float& repeater_max_slew,
+                    float drvr_output_cap,
+                    float drvr_output_slew);
+
   // We do not consider the max wirelength constraint
   // when we do decide if the net is needed to be repaired.
   float getOutputCap(const Pin* drvr_pin, float& max_cap);
@@ -324,16 +368,16 @@ class RepairDesign : dbStaState
     float &output_slew, float &input_slew);
   void createPreBufferedTree(Net* net, const Pin* drvr_pin, float max_cap);
   void createPostBufferedTree(
-                        int x,
-                        int y,
-                        LibertyCell* buffer_cell,
-                        // Return values.
-                        PinSeq& load_pins,
-                        float& repeater_fanout,
-                        float& repeater_max_slew,
-                        Pin*& repeater_in_pin,
-                        Pin*& repeater_out_pin,
-                        float& repeater_cap); //YL
+    Instance* buffer_inst, 
+    LibertyCell* buffer_cell,
+    int x, int y,
+    PinSeq& load_pins,
+    float repeater_fanout,
+    Pin*& repeater_in_pin,
+    Pin*& repeater_out_pin,
+    float repeater_input_cap,
+    float drvr_output_cap,
+    float drvr_output_slew); 
 
   void testBufferedTree(Pin*& repeater_in_pin,
                         Pin*& repeater_out_pin, 
@@ -349,7 +393,7 @@ class RepairDesign : dbStaState
 
   // void analyzeBufferedTrees(const std::vector<BufferedTreePtr>& buffered_trees_pre_,
   //                           const std::vector<BufferedTreePtr>& buffered_trees_post_);
-  void analyzeBufferedTrees();
+  void saveBufferedTrees();
 
   std::string getCurrentTimestamp();
   std::string generateUniqueFilename(const std::string& base_name);
@@ -357,6 +401,7 @@ class RepairDesign : dbStaState
   std::vector<BufferedTreePtr> buffered_trees_pre_;
   std::vector<BufferedTreePtr> buffered_trees_post_;
   BufferedTreePtr buffered_tree_;
+  bool store_buffered_trees_flag_ = false;
 };
 
 }  // namespace rsz
