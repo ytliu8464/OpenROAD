@@ -2517,10 +2517,13 @@ void RepairDesign::createPostBufferedTree(int x,
   buffer->input_cap = repeater_cap;
 
   // check slew
+  float buffer_output_slew = resizer_->bufferSlew(
+            buffer_cell, buffer->output_cap, resizer_->tgt_slew_dcalc_ap_);
+  buffer->output_slew = buffer_output_slew;
   float input_slew; 
   float output_slew;
   getSlew(repeater_out_pin, max_cap, output_slew, input_slew);  
-  buffer->output_slew = output_slew;
+  // buffer->output_slew = output_slew;
   buffer->input_slew = input_slew;
   buffer->max_output_cap = max_cap;
   buffer->node_type = BufferedTreeNodeType::BUFFER;
