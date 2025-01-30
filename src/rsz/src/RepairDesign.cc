@@ -2080,7 +2080,6 @@ void RepairDesign::initBufferedTrees()
 {
   buffered_trees_pre_.clear();
   buffered_trees_post_.clear();
-  // buffered_tree_->clear();
 }
 
 void RepairDesign::writeBufferedTrees(const std::string& file_name)
@@ -2186,8 +2185,7 @@ void RepairDesign::repairDesign_update(
       std::cout << "Begin Pre Tree Print\n";
       buffered_trees_pre_.back()->printTree();
       std::cout << "End Pre Tree Print\n";
-
-      buffered_tree_ = buffered_trees_pre_.back(); //YL
+      buffered_trees_post_.push_back(std::make_shared<BufferedTree>(*buffered_trees_pre_.back()));
       repairNet_update(net,
                 drvr_pin,
                 drvr,
@@ -2358,9 +2356,10 @@ void RepairDesign::repairNet_update(Net* net,
       }
     }
     if (repaired_net) {
-      buffered_trees_post_.push_back(buffered_tree_);
+      // buffered_trees_post_.push_back(buffered_tree_);
       std::cout << "Begin Post Tree Print\n";
-      buffered_tree_->printTree();
+      buffered_trees_post_.back()->printTree();
+      // buffered_tree_->printTree();
       std::cout << "End Post Tree Print\n";
       repaired_net_count++;
       std::cout << "------------Repaired net count------------- " << repaired_net_count << std::endl;
@@ -3169,6 +3168,8 @@ void RepairDesign::createPostBufferedTree(
   float drvr_output_cap,
   float drvr_output_slew)
 {
+  BufferedTreePtr& tree = buffered_trees_post_.back(); //YL: get the last tree
+  
   // 1. create buffer node
   BufferedTreeNodePtr buffer = std::make_shared<BufferedTreeNode>();
   buffer->pin_name = sdc_network_->pathName(repeater_in_pin); // buffer cell input pin
@@ -3190,7 +3191,7 @@ void RepairDesign::createPostBufferedTree(
   buffer->node_type = BufferedTreeNodeType::BUFFER;
 
   // 2. add buffer to the child of the root
-  BufferedTreeNodePtr root = buffered_tree_->getRoot();
+  BufferedTreeNodePtr root = tree->getRoot();
   buffer->parent = root;
   root->children.push_back(buffer);
   // YL: Update output cap and output slew of the driver
@@ -3202,7 +3203,7 @@ void RepairDesign::createPostBufferedTree(
   
   // 3. find sinks driven by the buffer
   std::vector<BufferedTreeNodePtr> nodes_to_remove;
-  auto& root_children = buffered_tree_->getRoot()->children;
+  auto& root_children = tree->getRoot()->children;
   // Precompute load pin names for faster lookup
   std::unordered_set<std::string> load_pin_names;
   for (const Pin* pin : load_pins) {
@@ -3233,7 +3234,6 @@ void RepairDesign::createPostBufferedTree(
   root->fanout = root->children.size();
   buffer->fanout = buffer->children.size();
   // tree->setRoot(root);
-  // buffered_trees_post_.push_back(tree);
 
 }
                         

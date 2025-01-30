@@ -400,7 +400,7 @@ class RepairDesign : dbStaState
 
   std::vector<BufferedTreePtr> buffered_trees_pre_;
   std::vector<BufferedTreePtr> buffered_trees_post_;
-  BufferedTreePtr buffered_tree_;
+  // BufferedTreePtr buffered_tree_;
   bool store_buffered_trees_flag_ = false;
 };
 
