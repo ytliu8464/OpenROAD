@@ -2554,10 +2554,10 @@ void RepairDesign::makeRepeater_update(const char* reason,
     drvr_output_cap,
     drvr_output_slew);
   logger_->report("End createPostBufferedTree...\n");
-  // for testing
+  // // for testing
   // std::cout<<"Start testing buffered tree...\n";
   // testBufferedTree(repeater_in_pin,repeater_out_pin, in_net, out_net);
-  //std::cout<<"End testing buffered tree...\n";
+  // std::cout<<"End testing buffered tree...\n";
   
   load_pins.clear();
   load_pins.push_back(repeater_in_pin);
