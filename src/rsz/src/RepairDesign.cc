@@ -37,6 +37,7 @@
 
 #include <vector>
 #include <fstream>
+#include <filesystem>
 
 #include "BufferedNet.hh"
 #include "db_sta/dbNetwork.hh"
@@ -3393,10 +3394,20 @@ std::string RepairDesign::getCurrentTimestamp() {
 }
 
 std::string RepairDesign::generateUniqueFilename(const std::string& base_name) {
-  const std::string save_directory = "/home/dgx_projects/MLBuf/mlbuf-dev/buffered_trees_data/finish_v1/";  
-  // if (!fs::exists(directory)) {
-  //   fs::create_directories(directory); 
-  // }
+  const std::string default_directory = "/home/dgx_projects/MLBuf/mlbuf-dev/buffered_trees_data/";  
+  
+  // User-defined directory
+  const char* env_dir = std::getenv("SAVE_DIR");
+  std::string save_directory = (env_dir != nullptr) ? std::string(env_dir) : default_directory;
+  
+  // Make sure the directory name is ended with '/'
+  if (save_directory.back() != '/') {
+    save_directory += "/";
+  }
+  
+  if (!std::filesystem::exists(save_directory)) {
+      std::filesystem::create_directories(save_directory);
+  }
   return save_directory + base_name + "_" + getCurrentTimestamp() + ".csv";
 }
 
