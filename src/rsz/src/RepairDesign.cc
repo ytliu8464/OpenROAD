@@ -3356,7 +3356,7 @@ bool RepairDesign::treeContainsBuffer(const BufferedTreePtr& tree) {
 // save
 void RepairDesign::saveBufferedTrees() {
   std::cout << "Total Trees (Pre Repair): " << buffered_trees_pre_.size() << std::endl;
-  std::cout << "Total Trees (Post Repair): " << buffered_trees_post_.size() << std::endl;
+  std::cout << "Total Trees (Post Repair) " << buffered_trees_post_.size() << std::endl;
 
   std::string pre_filename = generateUniqueFilename("buffered_trees_pre");
   std::string post_filename = generateUniqueFilename("buffered_trees_post");
