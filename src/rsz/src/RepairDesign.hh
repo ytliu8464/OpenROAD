@@ -262,6 +262,7 @@ class RepairDesign : dbStaState
                     Net*& out_net,
                     Pin*& repeater_in_pin,
                     Pin*& repeater_out_pin);
+  
   LibertyCell* findBufferUnderSlew(float max_slew, float load_cap);
   bool hasInputPort(const Net* net);
   double dbuToMeters(int dist) const;
@@ -303,7 +304,7 @@ class RepairDesign : dbStaState
   static constexpr int min_print_interval_ = 10;
   static constexpr int max_print_interval_ = 100;
 
- 
+ ///////////
   void repairNet_update(Net* net,
                  const Pin* drvr_pin,
                  Vertex* drvr,
@@ -333,8 +334,9 @@ class RepairDesign : dbStaState
                     Net*& out_net,
                     Pin*& repeater_in_pin,
                     Pin*& repeater_out_pin,
-                    float drvr_output_cap,
-                    float drvr_output_slew);
+                    float drvr_output_cap, // new
+                    float drvr_output_slew //new
+                    ); 
   
   void repairNetWire_update(
     const BufferedNetPtr& bnet,
@@ -400,8 +402,12 @@ class RepairDesign : dbStaState
 
   std::vector<BufferedTreePtr> buffered_trees_pre_;
   std::vector<BufferedTreePtr> buffered_trees_post_;
+  std::vector<BufferedTreePtr> buffered_trees_mid_; //YL: track feature updating
   // BufferedTreePtr buffered_tree_;
   bool store_buffered_trees_flag_ = false;
+  int buffer_order_count_ = 0;
+  // Recored the order of the inserted buffers
+
 };
 
 }  // namespace rsz

@@ -71,6 +71,9 @@ struct BufferedTreeNode {
   std::vector<BufferedTreeNodePtr> children;
   BufferedTreeNodePtr parent;
   int node_id;
+  int buffer_order;
+  float resistance;
+  std::string buffer_type;
 };
 
 
@@ -80,6 +83,8 @@ class BufferedTree
     // Default constructor
     BufferedTree() = default;
     BufferedTree(sta::Net* net) : net_(net) { }
+    // YL: Deep copy
+    BufferedTree(const BufferedTree &other);
 
     void setRoot(BufferedTreeNodePtr node);
     BufferedTreeNodePtr getRoot() const;
@@ -91,6 +96,10 @@ class BufferedTree
     BufferedTreeNodePtr root_;
     int netId_;
     sta::Net* net_;
+    
+    // YL: Helper function for deep copy
+    BufferedTreeNodePtr copyNode(const BufferedTreeNodePtr &node) const;
+
 };
 
 }  // namespace rsz

@@ -2081,6 +2081,7 @@ void RepairDesign::initBufferedTrees()
 {
   buffered_trees_pre_.clear();
   buffered_trees_post_.clear();
+  buffered_trees_mid_.clear();
 }
 
 void RepairDesign::writeBufferedTrees(const std::string& file_name)
@@ -2187,6 +2188,7 @@ void RepairDesign::repairDesign_update(
       buffered_trees_pre_.back()->printTree();
       std::cout << "End Pre Tree Print\n";
       buffered_trees_post_.push_back(std::make_shared<BufferedTree>(*buffered_trees_pre_.back()));
+      buffer_order_count_ = 0; // recored the order of the inserted buffers
       repairNet_update(net,
                 drvr_pin,
                 drvr,
@@ -2401,7 +2403,8 @@ void RepairDesign::makeRepeater_update(const char* reason,
                repeater_in_pin,
                repeater_out_pin,
                drvr_output_cap, //YL
-               drvr_output_slew);//YL
+               drvr_output_slew //YL
+               );
 }
 
 void RepairDesign::makeRepeater_update(const char* reason,
@@ -2519,7 +2522,8 @@ void RepairDesign::makeRepeater_update(const char* reason,
   Instance* buffer
       = resizer_->makeBuffer(buffer_cell, buffer_name.c_str(), parent, buf_loc);
   inserted_buffer_count_++;
-
+  buffer_order_count_++; //YL: track the feature updating when insert a new buffer
+  
   sta_->connectPin(buffer, buffer_input_port, in_net);
   sta_->connectPin(buffer, buffer_output_port, out_net);
 
@@ -2609,6 +2613,7 @@ void RepairDesign::repairNetWire_update(
   double length1 = dbuToMeters(length);
   double wire_res, wire_cap;
   bnet->wireRC(corner_, resizer_, wire_res, wire_cap);
+  std::cout<<"[lyt test in repairNetWire_update] wire_res: "<<wire_res<<"wire_cap: "<<wire_cap<<std::endl;
   // ref_cap includes ref's wire cap
   double ref_cap = bnet->ref()->cap();
   double load_cap = length1 * wire_cap + ref_cap;
@@ -2831,6 +2836,7 @@ void RepairDesign::repairNetJunc_update(
   Point loc = bnet->location();
   double wire_res, wire_cap;
   resizer_->wireSignalRC(corner_, wire_res, wire_cap);
+  std::cout<<"[lyt test in repairNetJunc_update] wire_res: "<<wire_res<<"wire_cap: "<<wire_cap<<std::endl;
 
   BufferedNetPtr left = bnet->ref();
   int wire_length_left = 0;
@@ -3101,6 +3107,9 @@ void RepairDesign::createPreBufferedTree(
   Point drvr_loc = db_network_->location(drvr_pin);
   root->x = dbuToMeters(drvr_loc.getX()) * 1e6;
   root->y = dbuToMeters(drvr_loc.getY()) * 1e6;
+  root->resistance = resizer_->driveResistance(drvr_pin);
+  root->buffer_order = -1;
+  root->buffer_type = -1;
   // Check Capacitance
   root->output_cap = getOutputCap(drvr_pin, max_cap);
   root->input_cap = -1.0;
@@ -3114,6 +3123,7 @@ void RepairDesign::createPreBufferedTree(
   root->max_output_cap = max_cap;
   root->parent = nullptr;
   root->node_type = BufferedTreeNodeType::DRIVER;
+
  
   float slew1, slew_slack1, max_slew1;
   const Corner* corner1;
@@ -3134,6 +3144,7 @@ void RepairDesign::createPreBufferedTree(
         Point sink_loc = db_network_->location(pin);
         sink->x = dbuToMeters(sink_loc.getX()) * 1e6;
         sink->y = dbuToMeters(sink_loc.getY()) * 1e6;
+        sink->buffer_order = -1;
         // Check Capacitance
         sink->output_cap = -1.0;
         LibertyPort* input_port = network_->libertyPort(pin);
@@ -3144,6 +3155,8 @@ void RepairDesign::createPreBufferedTree(
         sink->max_output_cap = -1.0;
         sink->parent = root;
         sink->node_type = BufferedTreeNodeType::SINK;
+        sink->resistance = -1;
+        sink->buffer_type = -1;
         root->children.push_back(sink);
       }
     } 
@@ -3176,6 +3189,11 @@ void RepairDesign::createPostBufferedTree(
   buffer->pin_name = sdc_network_->pathName(repeater_in_pin); // buffer cell input pin
   buffer->x = dbuToMeters(x) * 1e6;
   buffer->y = dbuToMeters(y) * 1e6;
+  buffer->buffer_order = buffer_order_count_;
+  buffer->buffer_type = buffer_cell->name();
+  // buffer resistance
+  float r_buffer = resizer_->bufferDriveResistance(buffer_cell);
+  buffer->resistance = r_buffer;
   // const Corner* corner1;
 
   // Check Capacitance
@@ -3235,6 +3253,12 @@ void RepairDesign::createPostBufferedTree(
   root->fanout = root->children.size();
   buffer->fanout = buffer->children.size();
   // tree->setRoot(root);
+  
+  // Make a deep copy
+  auto copied_tree = std::make_shared<rsz::BufferedTree>(*tree);
+
+  // Push the copy into buffered_trees_mid_
+  buffered_trees_mid_.push_back(copied_tree);
 
 }
                         
@@ -3279,7 +3303,7 @@ void RepairDesign::printTreeToCSV(const std::vector<BufferedTreePtr>& trees, con
 
   // csv header
   file << "Net Name,Tree ID,Depth,Node ID,Node Type,Pin Name,X,Y,Input Slew,Output Slew,";
-  file << "Input Cap,Output Cap,Max Output Cap,Fanout,Parent Node ID,#Children,Sink Count,Buffer Count\n";
+  file << "Input Cap,Output Cap,Max Output Cap,Fanout,Resistance,Parent Node ID,#Children,Sink Count,Buffer Count,Buffer Order, Buffer Type\n";
 
   int tree_id = 0;
   for (const auto& tree : trees) {
@@ -3315,9 +3339,11 @@ void RepairDesign::printTreeToCSV(const std::vector<BufferedTreePtr>& trees, con
       file << node->input_cap << "," << node->output_cap << ",";    // Capacitance
       file << node->max_output_cap << ",";             // Max Output Cap
       file << node->fanout << ",";                     // Fanout
+      file << node->resistance << ",";                     // Resistance
+      file << sink_count << "," << buffer_count << ","; // Sink Count, Buffer Count
       file << (node->parent ? std::to_string(node->parent->node_id) : "None") << ",";  // Parent Node ID
       file << node->children.size() << ",";            // #Children
-      file << sink_count << "," << buffer_count << "\n"; // Sink Count, Buffer Count
+      file << node->buffer_order << "," << buffer_type << "\n"; // Buffer Order, Buffer Type
 
               
       for (const auto& child : node->children) {
@@ -3357,9 +3383,11 @@ bool RepairDesign::treeContainsBuffer(const BufferedTreePtr& tree) {
 void RepairDesign::saveBufferedTrees() {
   std::cout << "Total Trees (Pre Repair): " << buffered_trees_pre_.size() << std::endl;
   std::cout << "Total Trees (Post Repair) " << buffered_trees_post_.size() << std::endl;
+  std::cout << "Total Trees (Mid Repair) " << buffered_trees_mid_.size() << std::endl;
 
   std::string pre_filename = generateUniqueFilename("buffered_trees_pre");
   std::string post_filename = generateUniqueFilename("buffered_trees_post");
+  std::string mid_filename = generateUniqueFilename("buffered_trees_mid");
 
   if (buffered_trees_pre_.size() > 0) {
     bool buffered_tree_print_flag = false;
@@ -3371,6 +3399,12 @@ void RepairDesign::saveBufferedTrees() {
     bool buffered_tree_print_flag = true;
     printTreeToCSV(buffered_trees_post_, post_filename, buffered_tree_print_flag);
     std::cout << "buffered_trees_post saved to " << post_filename << std::endl;
+  }
+
+  if (buffered_trees_mid_.size() > 0) {
+    bool buffered_tree_print_flag = true;
+    printTreeToCSV(buffered_trees_mid_, mid_filename, buffered_tree_print_flag);
+    std::cout << "buffered_trees_mid saved to " << mid_filename << std::endl;
   }
 
   // printTreeToCSV(buffered_trees_pre_, "buffered_trees_pre.csv");
@@ -3431,6 +3465,14 @@ std::string bufferedTreeNodeTypeToString(BufferedTreeNodeType type)
 // ----------------------------------------------------------------------------
 // BufferedTree
 // ----------------------------------------------------------------------------
+// YL: Deep copy constructor
+BufferedTree::BufferedTree(const BufferedTree& other)
+{
+  netId_ = other.netId_;
+  net_   = other.net_;   // You may or may not want to copy the same sta::Net*.
+  root_  = copyNode(other.root_);
+}
+
 void BufferedTree::setRoot(BufferedTreeNodePtr root_node)
 {
   root_ = std::move(root_node);
@@ -3517,7 +3559,31 @@ void BufferedTree::clear()
 }
 
 
+// YL: Private helper to recursively copy a node
+BufferedTreeNodePtr BufferedTree::copyNode(const BufferedTreeNodePtr &node) const
+{
+  if (!node) {
+    return nullptr;
+  }
 
+  // Allocate a new BufferedTreeNode by copying all data from 'node'
+  auto new_node = std::make_shared<BufferedTreeNode>(*node);
+
+  // Clear children in the new node so we can re-populate them
+  new_node->children.clear();
+
+  // Recursively copy children
+  for (const auto &child : node->children) {
+    auto new_child = copyNode(child);
+    if (new_child) {
+      new_child->parent = new_node;
+      new_node->children.push_back(new_child);
+    }
+  }
+
+  // Return newly created node
+  return new_node;
+}
 
 
 
