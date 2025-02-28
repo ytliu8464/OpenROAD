@@ -2522,7 +2522,6 @@ void RepairDesign::makeRepeater_update(const char* reason,
   Instance* buffer
       = resizer_->makeBuffer(buffer_cell, buffer_name.c_str(), parent, buf_loc);
   inserted_buffer_count_++;
-  buffer_order_count_++; //YL: track the feature updating when insert a new buffer
   
   sta_->connectPin(buffer, buffer_input_port, in_net);
   sta_->connectPin(buffer, buffer_output_port, out_net);
@@ -2547,6 +2546,15 @@ void RepairDesign::makeRepeater_update(const char* reason,
   repeater_max_slew = bufferInputMaxSlew(buffer_cell, corner_);
   
   logger_->report("--------Add a buffer and the buffer count is ----" + std::to_string(inserted_buffer_count_));
+  // Save original features
+  if (buffer_order_count_ == 0){
+    BufferedTreePtr& tree = buffered_trees_post_.back(); //YL: get the last tree
+    // Make a deep copy
+    auto copied_tree = std::make_shared<rsz::BufferedTree>(*tree);
+    // Push the copy into buffered_trees_mid_
+    buffered_trees_mid_.push_back(copied_tree);
+  }
+  buffer_order_count_++; //YL: track the feature updating when insert a new buffer
   logger_->report("Begin createPostBufferedTree...\n");
   createPostBufferedTree(buffer, 
     buffer_cell, 
@@ -3108,8 +3116,8 @@ void RepairDesign::createPreBufferedTree(
   root->x = dbuToMeters(drvr_loc.getX()) * 1e6;
   root->y = dbuToMeters(drvr_loc.getY()) * 1e6;
   root->resistance = resizer_->driveResistance(drvr_pin);
-  root->buffer_order = -1;
-  root->buffer_type = -1;
+  root->buffer_order = 0;
+  root->buffer_type = "-1";
   // Check Capacitance
   root->output_cap = getOutputCap(drvr_pin, max_cap);
   root->input_cap = -1.0;
@@ -3144,7 +3152,6 @@ void RepairDesign::createPreBufferedTree(
         Point sink_loc = db_network_->location(pin);
         sink->x = dbuToMeters(sink_loc.getX()) * 1e6;
         sink->y = dbuToMeters(sink_loc.getY()) * 1e6;
-        sink->buffer_order = -1;
         // Check Capacitance
         sink->output_cap = -1.0;
         LibertyPort* input_port = network_->libertyPort(pin);
@@ -3156,7 +3163,8 @@ void RepairDesign::createPreBufferedTree(
         sink->parent = root;
         sink->node_type = BufferedTreeNodeType::SINK;
         sink->resistance = -1;
-        sink->buffer_type = -1;
+        sink->buffer_type = "-1";
+        sink->buffer_order = 0;
         root->children.push_back(sink);
       }
     } 
@@ -3213,6 +3221,7 @@ void RepairDesign::createPostBufferedTree(
   BufferedTreeNodePtr root = tree->getRoot();
   buffer->parent = root;
   root->children.push_back(buffer);
+  root->buffer_order = buffer_order_count_;
   // YL: Update output cap and output slew of the driver
   if (drvr_output_cap !=0 and drvr_output_slew !=0)
   {
@@ -3230,6 +3239,7 @@ void RepairDesign::createPostBufferedTree(
   }
   // Iterate through root's children to find matching loads
   for (auto& child : root_children) {
+    child->buffer_order = buffer_order_count_;
       if (load_pin_names.find(child->pin_name) != load_pin_names.end()) {
           buffer->children.push_back(child);
           child->parent = buffer;
@@ -3343,7 +3353,7 @@ void RepairDesign::printTreeToCSV(const std::vector<BufferedTreePtr>& trees, con
       file << sink_count << "," << buffer_count << ","; // Sink Count, Buffer Count
       file << (node->parent ? std::to_string(node->parent->node_id) : "None") << ",";  // Parent Node ID
       file << node->children.size() << ",";            // #Children
-      file << node->buffer_order << "," << buffer_type << "\n"; // Buffer Order, Buffer Type
+      file << node->buffer_order << "," << node->buffer_type << "\n"; // Buffer Order, Buffer Type
 
               
       for (const auto& child : node->children) {
@@ -3402,7 +3412,7 @@ void RepairDesign::saveBufferedTrees() {
   }
 
   if (buffered_trees_mid_.size() > 0) {
-    bool buffered_tree_print_flag = true;
+    bool buffered_tree_print_flag = false;
     printTreeToCSV(buffered_trees_mid_, mid_filename, buffered_tree_print_flag);
     std::cout << "buffered_trees_mid saved to " << mid_filename << std::endl;
   }
