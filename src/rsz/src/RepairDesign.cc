@@ -3313,7 +3313,7 @@ void RepairDesign::printTreeToCSV(const std::vector<BufferedTreePtr>& trees, con
 
   // csv header
   file << "Net Name,Tree ID,Depth,Node ID,Node Type,Pin Name,X,Y,Input Slew,Output Slew,";
-  file << "Input Cap,Output Cap,Max Output Cap,Fanout,Resistance,Parent Node ID,#Children,Sink Count,Buffer Count,Buffer Order, Buffer Type\n";
+  file << "Input Cap,Output Cap,Max Output Cap,Fanout,Resistance,Sink Count,Buffer Count,Parent Node ID,#Children,Buffer Order,Buffer Type\n";
 
   int tree_id = 0;
   for (const auto& tree : trees) {
@@ -3330,6 +3330,7 @@ void RepairDesign::printTreeToCSV(const std::vector<BufferedTreePtr>& trees, con
     std::string net_name = net_db->getName();
 
     std::queue<std::pair<BufferedTreeNodePtr, int>> q;
+    
     q.push({tree->getRoot(), 0});
     int node_id = 0;
 
@@ -3354,7 +3355,6 @@ void RepairDesign::printTreeToCSV(const std::vector<BufferedTreePtr>& trees, con
       file << (node->parent ? std::to_string(node->parent->node_id) : "None") << ",";  // Parent Node ID
       file << node->children.size() << ",";            // #Children
       file << node->buffer_order << "," << node->buffer_type << "\n"; // Buffer Order, Buffer Type
-
               
       for (const auto& child : node->children) {
           q.push({child, depth + 1});
