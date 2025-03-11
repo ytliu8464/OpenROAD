@@ -370,6 +370,7 @@ class RepairDesign : dbStaState
     float &output_slew, float &input_slew);
   void createPreBufferedTree(Net* net, const Pin* drvr_pin, float max_cap);
   void createPostBufferedTree(
+    const char* reason,
     Instance* buffer_inst, 
     LibertyCell* buffer_cell,
     int x, int y,
@@ -394,6 +395,7 @@ class RepairDesign : dbStaState
                       const std::string& filename,
                       bool buffered_tree_print_flag);
   bool treeContainsBuffer(const BufferedTreePtr& tree);
+  std::pair<bool, bool> treeContainsSpecificNode(const BufferedTreePtr& tree);
 
   void saveBufferedTrees();
 

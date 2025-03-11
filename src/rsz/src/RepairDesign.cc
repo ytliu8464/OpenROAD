@@ -2247,6 +2247,7 @@ void RepairDesign::repairNet_update(Net* net,
 {
   // update the flag
   store_buffered_trees_flag_ = true;
+  logger_->report("[MAX Wirelength] : {}", max_length);  //YL 
   // Hands off special nets.
   if (!db_network_->isSpecial(net)) {
     debugPrint(logger_,
@@ -2277,12 +2278,16 @@ void RepairDesign::repairNet_update(Net* net,
     if (check_fanout) {
       float fanout, max_fanout, fanout_slack;
       sta_->checkFanout(drvr_pin, max_, fanout, max_fanout, fanout_slack);
+      
       if (max_fanout > 0.0 && fanout_slack < 0.0) {
         fanout_violations++;
         repaired_net = true;
 
         debugPrint(logger_, RSZ, "repair_net", 3, "fanout violation");
         LoadRegion region = findLoadRegions(drvr_pin, max_fanout);
+        logger_->report("[MAX Fanout] : {}", max_fanout);  //YL  
+        //exit(1);
+        
         corner_ = corner;
         makeRegionRepeaters(region,
                             max_fanout,
@@ -2556,7 +2561,9 @@ void RepairDesign::makeRepeater_update(const char* reason,
   }
   buffer_order_count_++; //YL: track the feature updating when insert a new buffer
   logger_->report("Begin createPostBufferedTree...\n");
-  createPostBufferedTree(buffer, 
+  createPostBufferedTree(
+    reason,
+    buffer, 
     buffer_cell, 
     x, y, 
     load_pins,
@@ -3179,6 +3186,7 @@ void RepairDesign::createPreBufferedTree(
 
 
 void RepairDesign::createPostBufferedTree(
+  const char* reason,
   Instance* buffer_inst,
   LibertyCell* buffer_cell,
   int x, int y,
@@ -3320,8 +3328,17 @@ void RepairDesign::printTreeToCSV(const std::vector<BufferedTreePtr>& trees, con
     if (!tree || !tree->getRoot()) continue;
 
     // Skip this tree if it does not contain any "Buffer" node
-    if (!treeContainsBuffer(tree) && buffered_tree_print_flag) continue;
+    // if (!treeContainsBuffer(tree) && buffered_tree_print_flag) continue;
+    
+    // Identify whether the tree contains buf and sinks
+    bool hasBuf, hasSink;
+    std::tie(hasBuf, hasSink) = treeContainsSpecificNode(tree);
+    // Skip this tree if it does not contain any "Buffer" node
+    if (!hasBuf && buffered_tree_print_flag) continue;
 
+    // Skip this tree if it does not contain any "Sink" node
+    if (!hasSink) continue;
+  
     int sink_count = 0, buffer_count = 0;
     countNodes(tree, sink_count, buffer_count);
 
@@ -3365,6 +3382,38 @@ void RepairDesign::printTreeToCSV(const std::vector<BufferedTreePtr>& trees, con
     tree_id++;
   }
   file.close();
+}
+
+// check if the tree contains buffer or sink 
+std::pair<bool, bool> RepairDesign::treeContainsSpecificNode(const BufferedTreePtr& tree) {
+  bool buffer_flag = false;
+  bool sink_flag = false;
+  // driver_flag = false;
+  if (!tree || !tree->getRoot()) return {buffer_flag, sink_flag};
+
+  std::queue<BufferedTreeNodePtr> q;
+  q.push(tree->getRoot());
+
+  while (!q.empty()) {
+      auto node = q.front();
+      q.pop();
+
+      if (node->node_type == BufferedTreeNodeType::BUFFER) {
+          buffer_flag = true; // Found at least one buffer node
+          // return true; 
+      }
+      if (node->node_type == BufferedTreeNodeType::SINK) {
+          sink_flag = true;
+          // return true; // Found at least one buffer node
+      }
+      if (buffer_flag && sink_flag) return {buffer_flag, sink_flag};
+
+      for (const auto& child : node->children) {
+          q.push(child);
+      }
+      
+  }
+  return {buffer_flag, sink_flag}; // No buffer node found
 }
 
 // check if the tree contains buffer
