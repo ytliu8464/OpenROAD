@@ -2185,7 +2185,7 @@ void RepairDesign::repairDesign_update(
       float max_cap = INF;
       createPreBufferedTree(net, drvr_pin, max_cap);
       std::cout << "Begin Pre Tree Print\n";
-      buffered_trees_pre_.back()->printTree();
+      // buffered_trees_pre_.back()->printTree();
       std::cout << "End Pre Tree Print\n";
       buffered_trees_post_.push_back(std::make_shared<BufferedTree>(*buffered_trees_pre_.back()));
       buffer_order_count_ = 0; // recored the order of the inserted buffers
@@ -2366,7 +2366,7 @@ void RepairDesign::repairNet_update(Net* net,
     if (repaired_net) {
       // buffered_trees_post_.push_back(buffered_tree_);
       std::cout << "Begin Post Tree Print\n";
-      buffered_trees_post_.back()->printTree();
+      // buffered_trees_post_.back()->printTree();
       // buffered_tree_->printTree();
       std::cout << "End Post Tree Print\n";
       repaired_net_count++;
@@ -3125,6 +3125,7 @@ void RepairDesign::createPreBufferedTree(
   root->resistance = resizer_->driveResistance(drvr_pin);
   root->buffer_order = 0;
   root->buffer_type = "-1";
+  root->buf_reason = "-1";
   // Check Capacitance
   root->output_cap = getOutputCap(drvr_pin, max_cap);
   root->input_cap = -1.0;
@@ -3171,6 +3172,7 @@ void RepairDesign::createPreBufferedTree(
         sink->node_type = BufferedTreeNodeType::SINK;
         sink->resistance = -1;
         sink->buffer_type = "-1";
+        sink->buf_reason = "-1";
         sink->buffer_order = 0;
         root->children.push_back(sink);
       }
@@ -3207,6 +3209,7 @@ void RepairDesign::createPostBufferedTree(
   buffer->y = dbuToMeters(y) * 1e6;
   buffer->buffer_order = buffer_order_count_;
   buffer->buffer_type = buffer_cell->name();
+  buffer->buf_reason = reason;
   // buffer resistance
   float r_buffer = resizer_->bufferDriveResistance(buffer_cell);
   buffer->resistance = r_buffer;
@@ -3321,7 +3324,7 @@ void RepairDesign::printTreeToCSV(const std::vector<BufferedTreePtr>& trees, con
 
   // csv header
   file << "Net Name,Tree ID,Depth,Node ID,Node Type,Pin Name,X,Y,Input Slew,Output Slew,";
-  file << "Input Cap,Output Cap,Max Output Cap,Fanout,Resistance,Sink Count,Buffer Count,Parent Node ID,#Children,Buffer Order,Buffer Type\n";
+  file << "Input Cap,Output Cap,Max Output Cap,Fanout,Resistance,Sink Count,Buffer Count,Parent Node ID,#Children,Buffer Order,Buffer Type, Buffer Reason\n";
 
   int tree_id = 0;
   for (const auto& tree : trees) {
@@ -3371,7 +3374,7 @@ void RepairDesign::printTreeToCSV(const std::vector<BufferedTreePtr>& trees, con
       file << sink_count << "," << buffer_count << ","; // Sink Count, Buffer Count
       file << (node->parent ? std::to_string(node->parent->node_id) : "None") << ",";  // Parent Node ID
       file << node->children.size() << ",";            // #Children
-      file << node->buffer_order << "," << node->buffer_type << "\n"; // Buffer Order, Buffer Type
+      file << node->buffer_order << "," << node->buffer_type << "," << node->buf_reason <<"\n"; // Buffer Order, Buffer Type, Reason
               
       for (const auto& child : node->children) {
           q.push({child, depth + 1});

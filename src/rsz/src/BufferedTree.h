@@ -74,6 +74,7 @@ struct BufferedTreeNode {
   int buffer_order;
   float resistance;
   std::string buffer_type;
+  std::string buf_reason;
 };
 
 
