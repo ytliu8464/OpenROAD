@@ -2247,7 +2247,7 @@ void RepairDesign::repairNet_update(Net* net,
 {
   // update the flag
   store_buffered_trees_flag_ = true;
-  logger_->report("[MAX Wirelength] : {}", max_length);  //YL 
+  // logger_->report("[MAX Wirelength] : {}", max_length);  //YL 
   // Hands off special nets.
   if (!db_network_->isSpecial(net)) {
     debugPrint(logger_,
@@ -2560,7 +2560,7 @@ void RepairDesign::makeRepeater_update(const char* reason,
     buffered_trees_mid_.push_back(copied_tree);
   }
   buffer_order_count_++; //YL: track the feature updating when insert a new buffer
-  logger_->report("Begin createPostBufferedTree...\n");
+  // logger_->report("Begin createPostBufferedTree...\n");
   createPostBufferedTree(
     reason,
     buffer, 
@@ -2573,7 +2573,7 @@ void RepairDesign::makeRepeater_update(const char* reason,
     repeater_cap,
     drvr_output_cap,
     drvr_output_slew);
-  logger_->report("End createPostBufferedTree...\n");
+  // logger_->report("End createPostBufferedTree...\n");
   // // for testing
   // std::cout<<"Start testing buffered tree...\n";
   // testBufferedTree(repeater_in_pin,repeater_out_pin, in_net, out_net);
@@ -2628,7 +2628,7 @@ void RepairDesign::repairNetWire_update(
   double length1 = dbuToMeters(length);
   double wire_res, wire_cap;
   bnet->wireRC(corner_, resizer_, wire_res, wire_cap);
-  std::cout<<"[lyt test in repairNetWire_update] wire_res: "<<wire_res<<"wire_cap: "<<wire_cap<<std::endl;
+  // std::cout<<"[lyt test in repairNetWire_update] wire_res: "<<wire_res<<"wire_cap: "<<wire_cap<<std::endl;
   // ref_cap includes ref's wire cap
   double ref_cap = bnet->ref()->cap();
   double load_cap = length1 * wire_cap + ref_cap;
@@ -2851,7 +2851,7 @@ void RepairDesign::repairNetJunc_update(
   Point loc = bnet->location();
   double wire_res, wire_cap;
   resizer_->wireSignalRC(corner_, wire_res, wire_cap);
-  std::cout<<"[lyt test in repairNetJunc_update] wire_res: "<<wire_res<<"wire_cap: "<<wire_cap<<std::endl;
+  // std::cout<<"[lyt test in repairNetJunc_update] wire_res: "<<wire_res<<"wire_cap: "<<wire_cap<<std::endl;
 
   BufferedNetPtr left = bnet->ref();
   int wire_length_left = 0;
