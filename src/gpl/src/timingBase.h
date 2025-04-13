@@ -71,6 +71,7 @@ class TimingBase
   // True: successfully reweighted gnets
   // False: no slacks found
   bool updateGNetWeights(bool run_journal_restore);
+  bool updateGNetWeights_update(bool run_journal_restore);
 
  private:
   rsz::Resizer* rs_ = nullptr;

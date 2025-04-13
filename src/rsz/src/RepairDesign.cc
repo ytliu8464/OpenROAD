@@ -167,6 +167,9 @@ void RepairDesign::repairDesign(
     // std::cout << "Buffered Trees Post Size (#buffered net): " << buffered_trees_post_.size() << std::endl;
     // std::cout << "#buffered net (test): " << repaired_net_count << std::endl;
     // std::cout << "#buffer: " << inserted_buffer_count_ << std::endl;
+
+    // YL: save prob nets here for MLBuf integration
+    saveProbNets();
  
     return;
   }
@@ -2082,6 +2085,7 @@ void RepairDesign::initBufferedTrees()
   buffered_trees_pre_.clear();
   buffered_trees_post_.clear();
   buffered_trees_mid_.clear();
+  buffered_trees_prob_.clear();
 }
 
 void RepairDesign::writeBufferedTrees(const std::string& file_name)
@@ -2219,6 +2223,7 @@ void RepairDesign::repairDesign_update(
       }
     }
   }
+
   resizer_->updateParasitics();
   if (verbose) {
     printProgress(print_iteration, true, true, repaired_net_count);
@@ -2285,7 +2290,7 @@ void RepairDesign::repairNet_update(Net* net,
 
         debugPrint(logger_, RSZ, "repair_net", 3, "fanout violation");
         LoadRegion region = findLoadRegions(drvr_pin, max_fanout);
-        logger_->report("[MAX Fanout] : {}", max_fanout);  //YL  
+        // logger_->report("[MAX Fanout] : {}", max_fanout);  //YL  
         //exit(1);
         
         corner_ = corner;
@@ -2353,6 +2358,31 @@ void RepairDesign::repairNet_update(Net* net,
                 units_->distanceUnit()->asString(dbuToMeters(drvr_loc.getY()),
                                                  1),
                 units_->distanceUnit()->asString(dbuToMeters(wire_length), 1));
+
+            // ----------------------------------------------------------------
+            // YL: recored problematic nets to files for MLBuf / hacky processing
+            BufferedTreePtr& problematic_net = buffered_trees_pre_.back();
+            auto copied_tree = std::make_shared<rsz::BufferedTree>(*problematic_net); // Make a deep copy
+            buffered_trees_prob_.push_back(copied_tree);
+
+            // obtain net name
+            // dbNet* net_db = db_network_->staToDb(problematic_net->getNet());
+            // std::string net_name = net_db->getName();
+            // logger_->report("[Problematic Net Name] : {}", net_name);  //YL
+            const char* buf_approach = std::getenv("BUF_APPROACH");
+            const std::string default_approach = "rsz";
+            std::string buffer_approach = (buf_approach != nullptr) ? std::string(buf_approach) : default_approach;
+            if (buffer_approach == "MLBuf") {
+              logger_->report("[INFO] MLBuf is used");
+              
+            } else if (buffer_approach == "Hack-y") {
+                logger_->report("[INFO] Hack-y baseline is used");
+            }
+            else {
+              logger_->report("[INFO] OR rsz is used");
+            }
+
+            // -------------------------------------------------------
             repairNet(bnet, drvr_pin, max_cap, max_length, corner);
             repaired_net = true;
 
@@ -2364,6 +2394,7 @@ void RepairDesign::repairNet_update(Net* net,
       }
     }
     if (repaired_net) {
+      // reapir one net --> construct one corresponding post buffered tree
       // buffered_trees_post_.push_back(buffered_tree_);
       std::cout << "Begin Post Tree Print\n";
       // buffered_trees_post_.back()->printTree();
@@ -2527,6 +2558,28 @@ void RepairDesign::makeRepeater_update(const char* reason,
   Instance* buffer
       = resizer_->makeBuffer(buffer_cell, buffer_name.c_str(), parent, buf_loc);
   inserted_buffer_count_++;
+
+  // --------- save buf_loc to file if BUF_APPROACH is rsz ------- //
+  dbInst* db_inst = db_network_->staToDb(buffer);
+  odb::dbMaster* buf_master = db_inst->getMaster();
+  const int buf_width = buf_master->getWidth();
+  const int buf_height = buf_master->getHeight();
+  int ux = x + buf_width;
+  int uy = y + buf_height;
+  int buf_area = buf_width * buf_height;
+
+  std::string buf_approach = std::getenv("BUF_APPROACH");
+  if (buf_approach == "rsz"){
+    const char* output_file = std::getenv("OUTPUT");
+    std::ofstream outfile(output_file, std::ios::app);
+    if (!outfile.is_open()) {
+        std::cerr << "can not open rsz_buf_save.csv" << std::endl;
+        exit(1);
+    }
+    outfile << x << "," << y << "," << ux << "," << uy << "," << buf_area << std::endl;
+    outfile.close();
+    }
+  // ------------------------------------------------------
   
   sta_->connectPin(buffer, buffer_input_port, in_net);
   sta_->connectPin(buffer, buffer_output_port, out_net);
@@ -2558,6 +2611,7 @@ void RepairDesign::makeRepeater_update(const char* reason,
     auto copied_tree = std::make_shared<rsz::BufferedTree>(*tree);
     // Push the copy into buffered_trees_mid_
     buffered_trees_mid_.push_back(copied_tree);
+
   }
   buffer_order_count_++; //YL: track the feature updating when insert a new buffer
   // logger_->report("Begin createPostBufferedTree...\n");
@@ -3380,8 +3434,6 @@ void RepairDesign::printTreeToCSV(const std::vector<BufferedTreePtr>& trees, con
           q.push({child, depth + 1});
       }
     }
-    
-
     tree_id++;
   }
   file.close();
@@ -3441,11 +3493,27 @@ bool RepairDesign::treeContainsBuffer(const BufferedTreePtr& tree) {
     return false; // No buffer node found
 }
 
+// YL: for MLBuf Integration
+void RepairDesign::saveProbNets() {
+  if (buffered_trees_prob_.size() > 0) {
+    bool buffered_tree_print_flag = false;
+    const char* buf_approach = std::getenv("BUF_APPROACH");
+    const std::string default_approach = "rsz";
+    std::string buffer_approach = (buf_approach != nullptr) ? std::string(buf_approach) : default_approach;
+    if (buffer_approach == "MLBuf" || buffer_approach == "Hack-y") {
+      std::string prob_net_file = std::getenv("INPUT"); // save problematic nets
+      printTreeToCSV(buffered_trees_prob_, prob_net_file, buffered_tree_print_flag);
+      std::cout << "buffered_trees_prob_ saved to " << prob_net_file << std::endl;
+    } 
+    
+  }
+}
+
 // save
 void RepairDesign::saveBufferedTrees() {
-  std::cout << "Total Trees (Pre Repair): " << buffered_trees_pre_.size() << std::endl;
-  std::cout << "Total Trees (Post Repair) " << buffered_trees_post_.size() << std::endl;
-  std::cout << "Total Trees (Mid Repair) " << buffered_trees_mid_.size() << std::endl;
+  // std::cout << "Total Trees (Pre Repair): " << buffered_trees_pre_.size() << std::endl;
+  // std::cout << "Total Trees (Post Repair) " << buffered_trees_post_.size() << std::endl;
+  // std::cout << "Total Trees (Mid Repair) " << buffered_trees_mid_.size() << std::endl;
 
   std::string pre_filename = generateUniqueFilename("buffered_trees_pre");
   std::string post_filename = generateUniqueFilename("buffered_trees_post");

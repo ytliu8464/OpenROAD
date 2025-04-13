@@ -43,7 +43,6 @@
 #include "placerBase.h"
 #include "point.h"
 #include "routeBase.h"
-
 namespace odb {
 class dbInst;
 class dbITerm;
@@ -71,6 +70,29 @@ class GPin;
 class FFT;
 class nesterovDbCbk;
 
+
+// YL: BufferBox for MLBuf
+class BufferBox{
+  public:
+  BufferBox() = default;
+  BufferBox(float lx, float ly, float ux, float uy, float area);
+
+  float lx() const { return lx_; };
+  float ly() const { return ly_; };
+  float ux() const { return ux_; };
+  float uy() const { return uy_; };
+  float area() const { return area_; };
+  
+  private:
+  // coordinate
+  float lx_ = 0;
+  float ly_ = 0;
+  float ux_ = 0;
+  float uy_ = 0;
+
+  float area_ = 0;
+
+};
 class GCell
 {
  public:
@@ -553,23 +575,29 @@ class Bin
   void setElectroPhi(float phi);
 
   void setNonPlaceArea(int64_t area);
+  void setBufPlaceArea(int64_t area); //YL buffer
   void setInstPlacedArea(int64_t area);
   void setFillerArea(int64_t area);
 
   void setNonPlaceAreaUnscaled(int64_t area);
+  void setBufPlaceAreaUnscaled(int64_t area); //YL buffer
   void setInstPlacedAreaUnscaled(int64_t area);
 
   void addNonPlaceArea(int64_t area);
+  void addBufPlaceArea(int64_t area); //YL buffer
   void addInstPlacedArea(int64_t area);
   void addFillerArea(int64_t area);
 
   void addNonPlaceAreaUnscaled(int64_t area);
+  void addBufPlaceAreaUnscaled(int64_t area); //YL buffer
   void addInstPlacedAreaUnscaled(int64_t area);
 
   const int64_t binArea() const;
   const int64_t nonPlaceArea() const { return nonPlaceArea_; }
+  const int64_t bufPlaceArea() const { return bufPlaceArea_; } //YL buffer
   const int64_t instPlacedArea() const { return instPlacedArea_; }
   const int64_t nonPlaceAreaUnscaled() const { return nonPlaceAreaUnscaled_; }
+  const int64_t bufPlaceAreaUnscaled() const { return bufPlaceAreaUnscaled_; } //YL buffer
   const int64_t instPlacedAreaUnscaled() const
   {
     return instPlacedAreaUnscaled_;
@@ -588,11 +616,14 @@ class Bin
   int ux_ = 0;
   int uy_ = 0;
 
+  
   int64_t nonPlaceArea_ = 0;
+  int64_t bufPlaceArea_ = 0; //YL buffer
   int64_t instPlacedArea_ = 0;
 
   int64_t instPlacedAreaUnscaled_ = 0;
   int64_t nonPlaceAreaUnscaled_ = 0;
+  int64_t bufPlaceAreaUnscaled_ = 0; //YL buffer
   int64_t fillerArea_ = 0;
 
   float density_ = 0;
@@ -626,11 +657,21 @@ inline void Bin::setNonPlaceArea(int64_t area)
 {
   nonPlaceArea_ = area;
 }
-
 inline void Bin::setNonPlaceAreaUnscaled(int64_t area)
 {
   nonPlaceAreaUnscaled_ = area;
 }
+
+// YL buffer
+inline void Bin::setBufPlaceArea(int64_t area)
+{
+  bufPlaceArea_ = area;
+}
+inline void Bin::setBufPlaceAreaUnscaled(int64_t area)
+{
+  bufPlaceAreaUnscaled_ = area;
+}
+
 
 inline void Bin::setInstPlacedArea(int64_t area)
 {
@@ -651,6 +692,11 @@ inline void Bin::addNonPlaceArea(int64_t area)
 {
   nonPlaceArea_ += area;
 }
+// YL buffer
+inline void Bin::addBufPlaceArea(int64_t area)
+{
+  bufPlaceArea_ += area;
+}
 
 inline void Bin::addInstPlacedArea(int64_t area)
 {
@@ -660,6 +706,12 @@ inline void Bin::addInstPlacedArea(int64_t area)
 inline void Bin::addNonPlaceAreaUnscaled(int64_t area)
 {
   nonPlaceAreaUnscaled_ += area;
+}
+
+// YL buffer
+inline void Bin::addBufPlaceAreaUnscaled(int64_t area)
+{
+  bufPlaceAreaUnscaled_ += area;
 }
 
 inline void Bin::addInstPlacedAreaUnscaled(int64_t area)
@@ -688,6 +740,8 @@ class BinGrid
   void setBinCnt(int binCntX, int binCntY);
   void setTargetDensity(float density);
   void updateBinsGCellDensityArea(const std::vector<GCellHandle>& cells);
+  //YL MLBuf
+  void updateBinsGCellDensityArea_update(const std::vector<GCellHandle>& cells, const std::vector<BufferBox>& bufferList);
   void setNumThreads(int num_threads) { num_threads_ = num_threads; }
 
   void initBins();
@@ -716,6 +770,10 @@ class BinGrid
 
   std::pair<int, int> getMinMaxIdxX(const Instance* inst) const;
   std::pair<int, int> getMinMaxIdxY(const Instance* inst) const;
+  
+  //YL MLBuf
+  std::pair<int, int> getMinMaxIdxXBuf(const BufferBox& vb) const;
+  std::pair<int, int> getMinMaxIdxYBuf(const BufferBox& vb) const;
 
   std::vector<Bin>& bins();
   const std::vector<Bin>& binsConst() const { return bins_; };
@@ -942,6 +1000,8 @@ class NesterovBase
   void updateGCellCenterLocation(const std::vector<FloatPoint>& coordis);
 
   void updateGCellDensityCenterLocation(const std::vector<FloatPoint>& coordis);
+  //YL MLBuf
+  void updateGCellDensityCenterLocation_update(const std::vector<FloatPoint>& coordis, const std::vector<BufferBox>& bufferList);
 
   int binCntX() const;
   int binCntY() const;
@@ -1071,6 +1131,8 @@ class NesterovBase
 
   void updateDensityCenterCur();
   void updateDensityCenterCurSLP();
+  //YL MLBuf
+  void updateDensityCenterCurSLP_update(bool mlbuf_flag, const std::vector<BufferBox>& bufferList);
   void updateDensityCenterPrevSLP();
   void updateDensityCenterNextSLP();
 
@@ -1092,7 +1154,11 @@ class NesterovBase
   void fixPointers(std::vector<size_t> new_gcells);
   // Must be called after fixPointers() to initialize internal values of gcells,
   // including parallel vectors.
+
   void updateGCellState(float wlCoeffX, float wlCoeffY);
+
+  //YL MLBuf
+  void cellInflationForMLBuf(const std::vector<BufferBox>& bufferList);
 
  private:
   NesterovBaseVars nbVars_;
@@ -1269,5 +1335,7 @@ inline bool isValidSigType(const odb::dbSigType& db_type)
   return (db_type == odb::dbSigType::SIGNAL
           || db_type == odb::dbSigType::CLOCK);
 }
+
+
 
 }  // namespace gpl

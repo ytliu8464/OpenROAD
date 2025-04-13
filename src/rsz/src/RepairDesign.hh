@@ -398,6 +398,7 @@ class RepairDesign : dbStaState
   std::pair<bool, bool> treeContainsSpecificNode(const BufferedTreePtr& tree);
 
   void saveBufferedTrees();
+  void saveProbNets(); // YL: for MLBuf integration
 
   std::string getCurrentTimestamp();
   std::string generateUniqueFilename(const std::string& base_name);
@@ -405,6 +406,7 @@ class RepairDesign : dbStaState
   std::vector<BufferedTreePtr> buffered_trees_pre_;
   std::vector<BufferedTreePtr> buffered_trees_post_;
   std::vector<BufferedTreePtr> buffered_trees_mid_; //YL: track feature updating
+  std::vector<BufferedTreePtr> buffered_trees_prob_; //YL: save the problematic net before repair
   // BufferedTreePtr buffered_tree_;
   bool store_buffered_trees_flag_ = false;
   int buffer_order_count_ = 0;

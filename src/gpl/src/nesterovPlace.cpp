@@ -472,7 +472,118 @@ int NesterovPlace::doNesterovPlace(int start_iter)
       }
 
       auto block = pbc_->db()->getChip()->getBlock();
-      bool shouldTdProceed = tb_->updateGNetWeights(virtual_td_iter);
+      // -----------------------------------------------------
+      // update since 2025/04/13 MLBuf integration
+      bool mlbuf_integration_flag = true;
+      log_->report("[INFO] mlbuf_integration_flag = {}", mlbuf_integration_flag);
+      if (mlbuf_integration_flag) {
+        log_->report("[INFO] MLBuf intergration Starts ....");  
+        // Do not update net weights in MLBuf mode, only consider the buffer area effect
+        bool shouldTdProceed = tb_->updateGNetWeights_update(virtual_td_iter); 
+      }
+      else {
+        bool shouldTdProceed = tb_->updateGNetWeights(virtual_td_iter); 
+      }
+
+      if (mlbuf_integration_flag && virtual_td_iter) {
+        // Call MLBuf / hacky baseline here to process all problematic nets
+        if (buffer_approach == "MLBuf") {
+          std::string model_pt = std::getenv("MODEL");
+          std::string prob_net = std::getenv("INPUT"); // save all problematic nets
+          std::string output_file = std::getenv("OUTPUT");
+          logger_->report("[INFO] MLBuf is used");
+          // printOneTreeToCSV(problematic_net, prob_net);
+          std::string cmd = "python /home/dgx_projects/MLBuf/virtual_buffer/MLBuf/mlbuf_infer.py " 
+                  "--model "+ model_pt + " " 
+                  "--input "+ prob_net + " " 
+                  "--output "+ output_file;
+          int ret = std::system(cmd.c_str());
+          if (ret != 0) {
+            logger_->report("mlbuf_infer.py failed with code {}", ret);
+          } 
+        } else if (buffer_approach == "Hack-y") {
+            logger_->report("[INFO] Hack-y baseline is used");
+            const std::string prob_net = std::getenv("INPUT"); // save all problematic nets
+            std::string output_file = std::getenv("OUTPUT");
+            // printOneTreeToCSV(problematic_net, prob_net);
+            std::string cmd = "python /home/dgx_projects/MLBuf/virtual_buffer/MLBuf/integrate_OR/hacky_baseline.py " 
+                    "--input " + prob_net + " " 
+                    "--output " + output_file;
+            int ret = std::system(cmd.c_str());
+            if (ret != 0) {
+              logger_->report("hacky_baseline.py failed with code {}", ret);
+              exit(1);
+            } 
+        }
+        else {
+          logger_->report("[INFO] OR rsz is used");
+        }
+        
+        // Now we have a list of buffers with buffer location and buffer sizes
+        // (1) Read from user-specified CSV
+        std::string bufferCSV = std::getenv("OUTPUT");  
+        std::vector<BufferBox> bufferList;
+        if (!loadBufferBoxesFromCSV(bufferCSV, bufferList)) {
+          log_->report("[ERROR] Failed to read buffer boxes from ", bufferCSV.c_str()); 
+          // exit(1);
+
+        } else {
+          log_->report("[INFO] Successfully loaded " + std::to_string(bufferList.size()) + " buffers from CSV");
+        }
+        
+        // (2) Compute total area 
+        float buf_total_area = computeTotalBufferArea(bufferList);
+        log_->report("[INFO] Sum of all buffers' area = " + std::to_string(buf_total_area));
+        // exit(0);
+
+        // (3) Integration manner: bin 
+        const std::string default_manner = "bin";  
+        const char* mlbuf_integration = std::getenv("INTEGRATION_MANNER");
+        std::string mlbuf_integration_manner = (mlbuf_integration != nullptr) ? std::string(mlbuf_integration) : default_manner;
+        if (mlbuf_integration_manner == "bin") {
+          log_->report("[INFO] Integration manner: reduce bin capacity");
+            for (auto& nesterov : nbVec_) {
+              nesterov->setTargetDensity(
+                static_cast<float>(buf_total_area
+                                  + nesterov->nesterovInstsArea()
+                                  + nesterov->totalFillerArea())
+                / static_cast<float>(nesterov->whiteSpaceArea()));
+              nesterov->updateDensityCenterCurSLP_update(mlbuf_integration_flag, bufferList); 
+              nesterov->updateDensityForceBin(); 
+              // nbc_->resetDeltaArea();
+              // nesterov->updateAreas();
+              // nesterov->updateDensitySize();
+            }
+        } 
+        // else if (mlbuf_integration_manner == "cell") {
+        //   log_->report("[INFO] Integration manner: cell inflation");
+        //     for (auto& nesterov : nbVec_) {
+        //       // for each cell, calculate overlap(cell, buf), calculate inflation ratio, inflate cell
+        //       nesterov->cellInflationForMLBuf(bufferList);
+        //       nesterov->updateAreas();
+        //       nesterov->updateDensitySize(); // Question: is there anything else I should do here?
+        //     }
+        // } 
+        else {
+          log_->report("[ERROR] Invalid integration manner: %s", mlbuf_integration_manner.c_str());
+          log_->report("[ERROR] Please set the environment variable 'Integration Manner' to 'bin' or 'cell'");
+          // exit(1);
+        }
+        // clean
+        std::ofstream ofs(bufferCSV, std::ios::trunc);
+        if (!ofs) {
+            std::cerr << "Failed to open file.\n";
+            return 1;
+        }
+        std::cout << "File content (predicted buffers) cleared successfully.\n";
+        ofs.close();
+    
+        log_->report("[INFO] MLBuf intergration Ends ....");
+      }
+      
+      // -----------------------------------------------------
+
+      // bool shouldTdProceed = tb_->updateGNetWeights(virtual_td_iter);
 
       if (!virtual_td_iter) {
         for (auto& nesterov : nbVec_) {
@@ -814,5 +925,54 @@ void nesterovDbCbk::inDbNetCreate(odb::dbNet* db_net)
 void nesterovDbCbk::inDbNetDestroy(odb::dbNet* db_net)
 {
 }
+
+// -----------------------------------------------------
+// New Functions for MLBuf 
+// -----------------------------------------------------
+float NesterovPlace::computeTotalBufferArea(const std::vector<BufferBox>& bufferList)
+{
+    double sumArea = 0.0;
+    for (const auto& buf : bufferList) {
+        sumArea += buf.area();  
+    }
+    return sumArea;
+}
+
+bool NesterovPlace::loadBufferBoxesFromCSV(const std::string& filename,
+  std::vector<BufferBox>& bufferList)
+{
+  std::ifstream fin(filename);
+  if (!fin.is_open()) {
+    std::cerr << "Error: cannot open file " << filename << "\n";
+    return false;
+  }
+
+  bufferList.clear();
+
+  std::string line;
+
+  while (std::getline(fin, line)) {
+  if (line.empty()) continue;
+  std::stringstream ss(line);
+  float lx, ly, ux, uy, area;
+
+  char comma; // to skip commas
+  // read five values
+  if (!(ss >> lx >> comma >> ly >> comma >> ux >> comma >> uy >> comma >> area)) {
+  std::cerr << "Warning: malformed CSV line: " << line << "\n";
+  continue;
+  }
+
+  bufferList.emplace_back(static_cast<float>(lx),
+                        static_cast<float>(ly),
+                        static_cast<float>(ux),
+                        static_cast<float>(uy),
+                        static_cast<float>(area));
+  }
+
+  fin.close();
+  return true;
+}
+
 
 }  // namespace gpl
