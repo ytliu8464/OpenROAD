@@ -47,6 +47,7 @@
 #include "routeBase.h"
 #include "timingBase.h"
 #include "utl/Logger.h"
+#include <fstream> //YL MLBuf
 
 namespace gpl {
 using utl::GPL;
@@ -474,6 +475,7 @@ int NesterovPlace::doNesterovPlace(int start_iter)
       auto block = pbc_->db()->getChip()->getBlock();
       // -----------------------------------------------------
       // update since 2025/04/13 MLBuf integration
+      bool shouldTdProceed = true; 
       bool mlbuf_integration_flag = true;
       log_->report("[INFO] mlbuf_integration_flag = {}", mlbuf_integration_flag);
       if (mlbuf_integration_flag) {
@@ -487,36 +489,37 @@ int NesterovPlace::doNesterovPlace(int start_iter)
 
       if (mlbuf_integration_flag && virtual_td_iter) {
         // Call MLBuf / hacky baseline here to process all problematic nets
+        const char* buf_approach = std::getenv("BUF_APPROACH");
+        const std::string default_approach = "rsz";
+        std::string buffer_approach = (buf_approach != nullptr) ? std::string(buf_approach) : default_approach;
         if (buffer_approach == "MLBuf") {
           std::string model_pt = std::getenv("MODEL");
           std::string prob_net = std::getenv("INPUT"); // save all problematic nets
           std::string output_file = std::getenv("OUTPUT");
-          logger_->report("[INFO] MLBuf is used");
-          // printOneTreeToCSV(problematic_net, prob_net);
+          log_->report("[INFO] MLBuf is used");
           std::string cmd = "python /home/dgx_projects/MLBuf/virtual_buffer/MLBuf/mlbuf_infer.py " 
                   "--model "+ model_pt + " " 
                   "--input "+ prob_net + " " 
                   "--output "+ output_file;
           int ret = std::system(cmd.c_str());
           if (ret != 0) {
-            logger_->report("mlbuf_infer.py failed with code {}", ret);
+            log_->report("mlbuf_infer.py failed with code {}", ret);
           } 
         } else if (buffer_approach == "Hack-y") {
-            logger_->report("[INFO] Hack-y baseline is used");
+            log_->report("[INFO] Hack-y baseline is used");
             const std::string prob_net = std::getenv("INPUT"); // save all problematic nets
             std::string output_file = std::getenv("OUTPUT");
-            // printOneTreeToCSV(problematic_net, prob_net);
             std::string cmd = "python /home/dgx_projects/MLBuf/virtual_buffer/MLBuf/integrate_OR/hacky_baseline.py " 
                     "--input " + prob_net + " " 
                     "--output " + output_file;
             int ret = std::system(cmd.c_str());
             if (ret != 0) {
-              logger_->report("hacky_baseline.py failed with code {}", ret);
+              log_->report("hacky_baseline.py failed with code {}", ret);
               exit(1);
             } 
         }
         else {
-          logger_->report("[INFO] OR rsz is used");
+          log_->report("[INFO] OR rsz is used");
         }
         
         // Now we have a list of buffers with buffer location and buffer sizes

@@ -228,11 +228,11 @@ bool TimingBase::updateGNetWeights_update(bool run_journal_restore)
   sta::NetSeq& worst_slack_nets = rs_->resizeWorstSlackNets();
 
   if (worst_slack_nets.empty()) {
-    log_->warn(
-        GPL,
-        105,
-        "Timing-driven: no net slacks found. Timing-driven mode disabled.");
-    return false;
+    log_->report(
+      // GPL,
+      // 105,
+      "Timing-driven: no net slacks found. Timing-driven mode disabled.");
+  return false;
   }
 
   // min/max slack for worst nets
@@ -241,11 +241,12 @@ bool TimingBase::updateGNetWeights_update(bool run_journal_restore)
       = rs_->resizeNetSlack(worst_slack_nets[worst_slack_nets.size() - 1])
             .value();
 
-  log_->info(GPL, 106, "Timing-driven: worst slack {:.3g}", slack_min);
+  log_->report("Timing-driven: worst slack {:.3g}", slack_min);
 
   if (sta::fuzzyInf(slack_min)) {
-    log_->warn(GPL,
-               102,
+    log_->report(
+              // GPL,
+              //  102,
                "Timing-driven: no slacks found. Timing-driven mode disabled.");
     return false;
   }
@@ -286,7 +287,7 @@ bool TimingBase::updateGNetWeights_update(bool run_journal_restore)
     }
   }
 
-  log_->info(GPL, 103, "Timing-driven: weighted {} nets.", weighted_net_count);
+  log_->report("Timing-driven: weighted {} nets.", weighted_net_count);
   return true;
 }
 

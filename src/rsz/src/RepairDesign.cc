@@ -2369,18 +2369,18 @@ void RepairDesign::repairNet_update(Net* net,
             // dbNet* net_db = db_network_->staToDb(problematic_net->getNet());
             // std::string net_name = net_db->getName();
             // logger_->report("[Problematic Net Name] : {}", net_name);  //YL
-            const char* buf_approach = std::getenv("BUF_APPROACH");
-            const std::string default_approach = "rsz";
-            std::string buffer_approach = (buf_approach != nullptr) ? std::string(buf_approach) : default_approach;
-            if (buffer_approach == "MLBuf") {
-              logger_->report("[INFO] MLBuf is used");
+            // const char* buf_approach = std::getenv("BUF_APPROACH");
+            // const std::string default_approach = "rsz";
+            // std::string buffer_approach = (buf_approach != nullptr) ? std::string(buf_approach) : default_approach;
+            // if (buffer_approach == "MLBuf") {
+            //   logger_->report("[INFO] MLBuf is used");
               
-            } else if (buffer_approach == "Hack-y") {
-                logger_->report("[INFO] Hack-y baseline is used");
-            }
-            else {
-              logger_->report("[INFO] OR rsz is used");
-            }
+            // } else if (buffer_approach == "Hack-y") {
+            //     logger_->report("[INFO] Hack-y baseline is used");
+            // }
+            // else {
+            //   logger_->report("[INFO] OR rsz is used");
+            // }
 
             // -------------------------------------------------------
             repairNet(bnet, drvr_pin, max_cap, max_length, corner);

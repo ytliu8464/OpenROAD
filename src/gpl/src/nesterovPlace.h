@@ -101,6 +101,10 @@ class NesterovPlace
   void destroyGCell(odb::dbInst*);
   void destroyGNet(odb::dbNet*);
   void destroyITerm(odb::dbITerm*);
+    // YL: MLBuf
+  float computeTotalBufferArea(const std::vector<BufferBox>& bufferList);
+  bool loadBufferBoxesFromCSV(const std::string& filename,
+    std::vector<BufferBox>& bufferList);
 
  private:
   std::shared_ptr<PlacerBaseCommon> pbc_;
