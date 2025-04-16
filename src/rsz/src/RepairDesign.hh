@@ -399,6 +399,7 @@ class RepairDesign : dbStaState
 
   void saveBufferedTrees();
   void saveProbNets(); // YL: for MLBuf integration
+  int countNodes(const BufferedTreeNodePtr& node);
 
   std::string getCurrentTimestamp();
   std::string generateUniqueFilename(const std::string& base_name);

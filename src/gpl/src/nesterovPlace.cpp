@@ -48,6 +48,7 @@
 #include "timingBase.h"
 #include "utl/Logger.h"
 #include <fstream> //YL MLBuf
+#include <chrono> //YL MLBuf
 
 namespace gpl {
 using utl::GPL;
@@ -476,7 +477,7 @@ int NesterovPlace::doNesterovPlace(int start_iter)
       // -----------------------------------------------------
       // update since 2025/04/13 MLBuf integration
       bool shouldTdProceed = true; 
-      bool mlbuf_integration_flag = true;
+      bool mlbuf_integration_flag = false;
       log_->report("[INFO] mlbuf_integration_flag = {}", mlbuf_integration_flag);
       if (mlbuf_integration_flag) {
         log_->report("[INFO] MLBuf intergration Starts ....");  
@@ -496,11 +497,13 @@ int NesterovPlace::doNesterovPlace(int start_iter)
           std::string model_pt = std::getenv("MODEL");
           std::string prob_net = std::getenv("INPUT"); // save all problematic nets
           std::string output_file = std::getenv("OUTPUT");
+          std::string mlbuf_time_file = std::getenv("TIMEMLBuf");
           log_->report("[INFO] MLBuf is used");
           std::string cmd = "python /home/dgx_projects/MLBuf/virtual_buffer/MLBuf/mlbuf_infer.py " 
                   "--model "+ model_pt + " " 
                   "--input "+ prob_net + " " 
-                  "--output "+ output_file;
+                  "--output "+ output_file + " "
+                  "--timeMLBuf " + mlbuf_time_file;
           int ret = std::system(cmd.c_str());
           if (ret != 0) {
             log_->report("mlbuf_infer.py failed with code {}", ret);
@@ -587,7 +590,7 @@ int NesterovPlace::doNesterovPlace(int start_iter)
       // -----------------------------------------------------
 
       // bool shouldTdProceed = tb_->updateGNetWeights(virtual_td_iter);
-
+      auto netlistModifySt = std::chrono::high_resolution_clock::now();
       if (!virtual_td_iter) {
         for (auto& nesterov : nbVec_) {
           nesterov->updateGCellState(wireLengthCoefX_, wireLengthCoefY_);
@@ -630,7 +633,25 @@ int NesterovPlace::doNesterovPlace(int start_iter)
       if (!shouldTdProceed) {
         npVars_.timingDrivenMode = false;
       }
+      auto netlistModifyEt = std::chrono::high_resolution_clock::now();
+      // ---------- YL MLBuf, just for test ---------
+      auto netlistModifyDuration = std::chrono::duration_cast<std::chrono::milliseconds>(netlistModifyEt - netlistModifySt);
+      // Open the file in append mode
+      std::string runtime_file = std::getenv("TIMERSZ");
+      std::ofstream file(runtime_file, std::ios::app);
+
+      if (file.is_open()) {
+          file << netlistModifyDuration.count() << std::endl; // Append the number and a newline
+          file.close();
+          std::cout << "netlistModifyDuration appended to file successfully." << std::endl;
+      } else {
+          std::cerr << "Unable to open recordORTime.txt" << std::endl;
+          return 1; // error code
+      }
+      // exit(0); // YL MLBuf, just for test
+
     }
+    
 
     // diverge detection on
     // large max_phi_cof value + large design
