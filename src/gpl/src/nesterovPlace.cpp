@@ -477,7 +477,7 @@ int NesterovPlace::doNesterovPlace(int start_iter)
       // -----------------------------------------------------
       // update since 2025/04/13 MLBuf integration
       bool shouldTdProceed = true; 
-      bool mlbuf_integration_flag = false;
+      bool mlbuf_integration_flag = true;
       log_->report("[INFO] mlbuf_integration_flag = {}", mlbuf_integration_flag);
       if (mlbuf_integration_flag) {
         log_->report("[INFO] MLBuf intergration Starts ....");  
