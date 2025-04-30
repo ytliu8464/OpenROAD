@@ -490,31 +490,43 @@ int NesterovPlace::doNesterovPlace(int start_iter)
 
       if (mlbuf_integration_flag && virtual_td_iter) {
         // Call MLBuf / hacky baseline here to process all problematic nets
-        const char* buf_approach = std::getenv("BUF_APPROACH");
+        std::string buf_approach = std::getenv("BUF_APPROACH");
         const std::string default_approach = "rsz";
-        std::string buffer_approach = (buf_approach != nullptr) ? std::string(buf_approach) : default_approach;
-        if (buffer_approach == "MLBuf") {
+        std::string buffer_approach = (buf_approach.size() != 0) ? std::string(buf_approach) : default_approach;
+        std::cout << "Buffer approach: " << buffer_approach << std::endl;
+        if (buffer_approach == std::string("MLBuf")) {
           std::string model_pt = std::getenv("MODEL");
+          std::cout << "[INFO] model_pt = " << model_pt << std::endl;
           std::string prob_net = std::getenv("INPUT"); // save all problematic nets
+          std::cout << "[INFO] prob_net = " << prob_net << std::endl;
           std::string output_file = std::getenv("OUTPUT");
+          std::cout << "[INFO] output_file = " << output_file << std::endl;
           std::string mlbuf_time_file = std::getenv("TIMEMLBuf");
+          std::cout << "[INFO] mlbuf_time_file = " << mlbuf_time_file << std::endl;
+          std::string env_cluster = std::getenv("CLUSTERNUM");
+          std::cout << "[INFO] env_cluster = " << env_cluster << std::endl;
+          
           log_->report("[INFO] MLBuf is used");
-          std::string cmd = "python /home/dgx_projects/MLBuf/virtual_buffer/MLBuf/mlbuf_infer.py " 
-                  "--model "+ model_pt + " " 
-                  "--input "+ prob_net + " " 
-                  "--output "+ output_file + " "
-                  "--timeMLBuf " + mlbuf_time_file;
+          std::string cmd = "/home/tool/anaconda3/envs/zhiang/bin/python /home/dgx_projects/MLBuf/virtual_buffer/MLBuf/mlbuf_infer.py "; 
+          cmd += "--model "+ model_pt + " "; 
+          cmd += "--input "+ prob_net + " "; 
+          cmd += "--output "+ output_file + " ";
+          cmd += "--timeMLBuf " + mlbuf_time_file + " ";
+          cmd += "--clusterNum " + env_cluster + " ";
+          cmd += "--cudaID " + std::string(std::getenv("CUDAID")) + " ";
+
+          std::cout << "[INFO] cmd = " << cmd << std::endl;
           int ret = std::system(cmd.c_str());
           if (ret != 0) {
             log_->report("mlbuf_infer.py failed with code {}", ret);
           } 
-        } else if (buffer_approach == "Hack-y") {
+        } else if (buffer_approach == std::string("Hack-y")) {
             log_->report("[INFO] Hack-y baseline is used");
             const std::string prob_net = std::getenv("INPUT"); // save all problematic nets
             std::string output_file = std::getenv("OUTPUT");
-            std::string cmd = "python /home/dgx_projects/MLBuf/virtual_buffer/MLBuf/integrate_OR/hacky_baseline.py " 
-                    "--input " + prob_net + " " 
-                    "--output " + output_file;
+            std::string cmd = "/home/tool/anaconda3/envs/zhiang/bin/python /home/dgx_projects/MLBuf/virtual_buffer/MLBuf/integrate_OR/hacky_baseline.py "; 
+            cmd += "--input " + prob_net + " "; 
+            cmd += "--output " + output_file;
             int ret = std::system(cmd.c_str());
             if (ret != 0) {
               log_->report("hacky_baseline.py failed with code {}", ret);
@@ -578,10 +590,10 @@ int NesterovPlace::doNesterovPlace(int start_iter)
         // clean
         std::ofstream ofs(bufferCSV, std::ios::trunc);
         if (!ofs) {
-            std::cerr << "Failed to open file.\n";
+            std::cerr << "Failed to open bufferCSV.\n";
             return 1;
         }
-        std::cout << "File content (predicted buffers) cleared successfully.\n";
+        std::cout << "File contents (bufferCSV, predicted buffers) cleared successfully.\n";
         ofs.close();
     
         log_->report("[INFO] MLBuf intergration Ends ....");
@@ -637,17 +649,17 @@ int NesterovPlace::doNesterovPlace(int start_iter)
       // ---------- YL MLBuf, just for test ---------
       auto netlistModifyDuration = std::chrono::duration_cast<std::chrono::milliseconds>(netlistModifyEt - netlistModifySt);
       // Open the file in append mode
-      std::string runtime_file = std::getenv("TIMERSZ");
-      std::ofstream file(runtime_file, std::ios::app);
+      // std::string runtime_file = std::getenv("TIMERSZ");
+      // std::ofstream file(runtime_file, std::ios::app);
 
-      if (file.is_open()) {
-          file << netlistModifyDuration.count() << std::endl; // Append the number and a newline
-          file.close();
-          std::cout << "netlistModifyDuration appended to file successfully." << std::endl;
-      } else {
-          std::cerr << "Unable to open recordORTime.txt" << std::endl;
-          return 1; // error code
-      }
+      // if (file.is_open()) {
+      //     file << netlistModifyDuration.count() << std::endl; // Append the number and a newline
+      //     file.close();
+      //     std::cout << "netlistModifyDuration appended to file successfully." << std::endl;
+      // } else {
+      //     std::cerr << "Unable to open recordORTime.txt" << std::endl;
+      //     return 1; // error code
+      // }
       // exit(0); // YL MLBuf, just for test
 
     }

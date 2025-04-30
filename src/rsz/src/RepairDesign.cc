@@ -152,15 +152,15 @@ void RepairDesign::repairDesign(
     bool store_buffered_trees_flag)
 {
   if (store_buffered_trees_flag) {
-    // clean
-    std::string runtime_file = std::getenv("TIMERSZ");
-    std::ofstream ofs(runtime_file, std::ios::trunc);
-    if (!ofs) {
-        std::cerr << "Failed to open file.\n";
-        return;
-    }
-    std::cout << "File recordORTime cleared successfully.\n";
-    ofs.close();
+    // // clean
+    // std::string runtime_file = std::getenv("TIMERSZ");
+    // std::ofstream ofs(runtime_file, std::ios::trunc);
+    // if (!ofs) {
+    //     std::cerr << "Failed to open file.\n";
+    //     return;
+    // }
+    // std::cout << "File recordORTime cleared successfully.\n";
+    // ofs.close();
     repairDesign_update(max_wire_length,
                         slew_margin,
                         cap_margin,
@@ -172,8 +172,10 @@ void RepairDesign::repairDesign(
                         fanout_violations,
                         length_violations);
     // YL: store buffered trees
-    saveBufferedTrees();
-    std::cout << "--------------Save buffered trees to the csv file----------------" << std::endl;
+    // [Note] YL update 20250419 -- do not save buffered trees !!!
+    // saveBufferedTrees();
+    // std::cout << "--------------Save buffered trees to the csv file----------------" << std::endl;
+
     // std::cout << "Buffered Trees Pre Size (#net): " << buffered_trees_pre_.size() << std::endl;
     // std::cout << "Buffered Trees Post Size (#buffered net): " << buffered_trees_post_.size() << std::endl;
     // std::cout << "#buffered net (test): " << repaired_net_count << std::endl;
@@ -181,16 +183,16 @@ void RepairDesign::repairDesign(
 
     // YL: save prob nets here for MLBuf integration
     saveProbNets();
-    // std::string runtime_file = std::getenv("TIMERSZ");
-    std::ofstream file(runtime_file, std::ios::app);
-      if (file.is_open()) {
-          file << inserted_buffer_count_ << "\n"; // Append the number and a newline
-          file.close();
-          std::cout << "inserted_buffer_count_ appended to file successfully." << std::endl;
-      } else {
-          std::cerr << "Unable to open recordORTime.txt" << std::endl;
-          return; // error code
-      }
+    // // std::string runtime_file = std::getenv("TIMERSZ");
+    // std::ofstream file(runtime_file, std::ios::app);
+    //   if (file.is_open()) {
+    //       file << inserted_buffer_count_ << "\n"; // Append the number and a newline
+    //       file.close();
+    //       std::cout << "inserted_buffer_count_ appended to file successfully." << std::endl;
+    //   } else {
+    //       std::cerr << "Unable to open recordORTime.txt" << std::endl;
+    //       return; // error code
+    //   }
  
     return;
   }
@@ -2393,21 +2395,21 @@ void RepairDesign::repairNet_update(Net* net,
             auto tree = copied_tree;
            
             BufferedTreeNodePtr root = tree->getRoot();
-            if (root) {
-              dbNet* net_db = db_network_->staToDb(tree->getNet());
-              std::string net_name = net_db->getName();
-              int node_count = countNodes(root);
-              std::string runtime_file = std::getenv("TIMERSZ");
-              std::ofstream file(runtime_file, std::ios::app);
-              if (file.is_open()) {
-                  file << net_name << "," <<node_count<<","<< OpenSTADuration.count() << ","; // Append the number and a newline
-                  file.close();
-                  std::cout << "netlistModifyDuration appended to file successfully." << std::endl;
-              } else {
-                  std::cerr << "Unable to open recordORTime.txt" << std::endl;
-                  return; // error code
-              }
-            }
+            // if (root) {
+            //   dbNet* net_db = db_network_->staToDb(tree->getNet());
+            //   std::string net_name = net_db->getName();
+            //   int node_count = countNodes(root);
+            //   std::string runtime_file = std::getenv("TIMERSZ");
+            //   std::ofstream file(runtime_file, std::ios::app);
+            //   if (file.is_open()) {
+            //       file << net_name << "," <<node_count<<","<< OpenSTADuration.count() << ","; // Append the number and a newline
+            //       file.close();
+            //       std::cout << "netlistModifyDuration appended to file successfully." << std::endl;
+            //   } else {
+            //       std::cerr << "Unable to open recordORTime.txt" << std::endl;
+            //       return; // error code
+            //   }
+            // }
               
 
             
@@ -2438,18 +2440,18 @@ void RepairDesign::repairNet_update(Net* net,
             if (resize_drvr) {
               resize_count_ += resizer_->resizeToTargetSlew(drvr_pin);
             }
-            auto repairEd = std::chrono::high_resolution_clock::now();
-            auto repairDuration = std::chrono::duration_cast<std::chrono::milliseconds>(repairEd - repairSt);
-            std::string runtime_file2 = std::getenv("TIMERSZ");
-            std::ofstream file2(runtime_file2, std::ios::app);
-            if (file2.is_open()) {
-                file2 << repairDuration.count() << "\n";  
-                file2.close();
-                std::cout << "repairDuration appended to file successfully." << std::endl;
-            } else {
-                std::cerr << "Unable to open recordORTime.txt (when writing repairDuration)" << std::endl;
-                return;
-            }
+            // auto repairEd = std::chrono::high_resolution_clock::now();
+            // auto repairDuration = std::chrono::duration_cast<std::chrono::milliseconds>(repairEd - repairSt);
+            // std::string runtime_file2 = std::getenv("TIMERSZ");
+            // std::ofstream file2(runtime_file2, std::ios::app);
+            // if (file2.is_open()) {
+            //     file2 << repairDuration.count() << "\n";  
+            //     file2.close();
+            //     std::cout << "repairDuration appended to file successfully." << std::endl;
+            // } else {
+            //     std::cerr << "Unable to open recordORTime.txt (when writing repairDuration)" << std::endl;
+            //     return;
+            // }
 
           }
         }
@@ -2466,7 +2468,7 @@ void RepairDesign::repairNet_update(Net* net,
       // std::cout << "End Post Tree Print\n";
       // std::cout << "Save Post Tree Print\n";
       repaired_net_count++;
-      std::cout << "------------Repaired net count------------- " << repaired_net_count << std::endl;
+      // std::cout << "------------Repaired net count------------- " << repaired_net_count << std::endl;
     }
   }
   store_buffered_trees_flag_ = false;
@@ -2668,7 +2670,7 @@ void RepairDesign::makeRepeater_update(const char* reason,
   repeater_fanout = resizer_->portFanoutLoad(buffer_input_port);
   repeater_max_slew = bufferInputMaxSlew(buffer_cell, corner_);
   
-  logger_->report("--------Add a buffer and the buffer count is ----" + std::to_string(inserted_buffer_count_));
+  // logger_->report("--------Add a buffer and the buffer count is ----" + std::to_string(inserted_buffer_count_));
   // Save original features
   if (buffer_order_count_ == 0){
     BufferedTreePtr& tree = buffered_trees_post_.back(); //YL: get the last tree
