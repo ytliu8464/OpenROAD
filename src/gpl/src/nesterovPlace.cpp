@@ -547,13 +547,11 @@ int NesterovPlace::doNesterovPlace(int start_iter)
           log_->report("[ERROR] Failed to read buffer boxes from ", bufferCSV.c_str()); 
 
         } else {
-          log_->report("[INFO] Successfully loaded " + std::to_string(bufferList.size()) + " buffers from CSV");
+          log_->report("[INFO] Successfully loaded buffers from CSV");
         }
         
         // (2) Compute total area 
         float buf_total_area = computeTotalBufferArea(bufferList);
-        log_->report("[INFO] Sum of all buffers' area = " + std::to_string(buf_total_area));
-        // exit(0);
 
         // (3) Integration manner: bin 
         const std::string default_manner = "bin";  
