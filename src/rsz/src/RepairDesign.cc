@@ -152,15 +152,7 @@ void RepairDesign::repairDesign(
     bool store_buffered_trees_flag)
 {
   if (store_buffered_trees_flag) {
-    // // clean
-    // std::string runtime_file = std::getenv("TIMERSZ");
-    // std::ofstream ofs(runtime_file, std::ios::trunc);
-    // if (!ofs) {
-    //     std::cerr << "Failed to open file.\n";
-    //     return;
-    // }
-    // std::cout << "File recordORTime cleared successfully.\n";
-    // ofs.close();
+
     repairDesign_update(max_wire_length,
                         slew_margin,
                         cap_margin,
@@ -171,29 +163,8 @@ void RepairDesign::repairDesign(
                         cap_violations,
                         fanout_violations,
                         length_violations);
-    // YL: store buffered trees
-    // [Note] YL update 20250419 -- do not save buffered trees !!!
-    // saveBufferedTrees();
-    // std::cout << "--------------Save buffered trees to the csv file----------------" << std::endl;
-
-    // std::cout << "Buffered Trees Pre Size (#net): " << buffered_trees_pre_.size() << std::endl;
-    // std::cout << "Buffered Trees Post Size (#buffered net): " << buffered_trees_post_.size() << std::endl;
-    // std::cout << "#buffered net (test): " << repaired_net_count << std::endl;
-    // std::cout << "#buffer: " << inserted_buffer_count_ << std::endl;
-
-    // YL: save prob nets here for MLBuf integration
+    
     saveProbNets();
-    // // std::string runtime_file = std::getenv("TIMERSZ");
-    // std::ofstream file(runtime_file, std::ios::app);
-    //   if (file.is_open()) {
-    //       file << inserted_buffer_count_ << "\n"; // Append the number and a newline
-    //       file.close();
-    //       std::cout << "inserted_buffer_count_ appended to file successfully." << std::endl;
-    //   } else {
-    //       std::cerr << "Unable to open recordORTime.txt" << std::endl;
-    //       return; // error code
-    //   }
- 
     return;
   }
   
@@ -2384,7 +2355,7 @@ void RepairDesign::repairNet_update(Net* net,
                 units_->distanceUnit()->asString(dbuToMeters(wire_length), 1));
 
             // ----------------------------------------------------------------
-            // YL: recored problematic nets to files for MLBuf / hacky processing
+            // YL: recored problematic nets to files for MLBuf / adhoc processing
             auto OpenSTAEnd = std::chrono::high_resolution_clock::now();
             auto OpenSTADuration = std::chrono::duration_cast<std::chrono::milliseconds>(OpenSTAEnd - OpenSTASt);
             
@@ -2395,43 +2366,9 @@ void RepairDesign::repairNet_update(Net* net,
             auto tree = copied_tree;
            
             BufferedTreeNodePtr root = tree->getRoot();
-            // if (root) {
-            //   dbNet* net_db = db_network_->staToDb(tree->getNet());
-            //   std::string net_name = net_db->getName();
-            //   int node_count = countNodes(root);
-            //   std::string runtime_file = std::getenv("TIMERSZ");
-            //   std::ofstream file(runtime_file, std::ios::app);
-            //   if (file.is_open()) {
-            //       file << net_name << "," <<node_count<<","<< OpenSTADuration.count() << ","; // Append the number and a newline
-            //       file.close();
-            //       std::cout << "netlistModifyDuration appended to file successfully." << std::endl;
-            //   } else {
-            //       std::cerr << "Unable to open recordORTime.txt" << std::endl;
-            //       return; // error code
-            //   }
-            // }
-              
-
             
             auto repairSt = std::chrono::high_resolution_clock::now();
             
-
-            // obtain net name
-            // dbNet* net_db = db_network_->staToDb(problematic_net->getNet());
-            // std::string net_name = net_db->getName();
-            // logger_->report("[Problematic Net Name] : {}", net_name);  //YL
-            // const char* buf_approach = std::getenv("BUF_APPROACH");
-            // const std::string default_approach = "rsz";
-            // std::string buffer_approach = (buf_approach != nullptr) ? std::string(buf_approach) : default_approach;
-            // if (buffer_approach == "MLBuf") {
-            //   logger_->report("[INFO] MLBuf is used");
-              
-            // } else if (buffer_approach == "Hack-y") {
-            //     logger_->report("[INFO] Hack-y baseline is used");
-            // }
-            // else {
-            //   logger_->report("[INFO] OR rsz is used");
-            // }
 
             // -------------------------------------------------------
             repairNet(bnet, drvr_pin, max_cap, max_length, corner);
@@ -2440,18 +2377,6 @@ void RepairDesign::repairNet_update(Net* net,
             if (resize_drvr) {
               resize_count_ += resizer_->resizeToTargetSlew(drvr_pin);
             }
-            // auto repairEd = std::chrono::high_resolution_clock::now();
-            // auto repairDuration = std::chrono::duration_cast<std::chrono::milliseconds>(repairEd - repairSt);
-            // std::string runtime_file2 = std::getenv("TIMERSZ");
-            // std::ofstream file2(runtime_file2, std::ios::app);
-            // if (file2.is_open()) {
-            //     file2 << repairDuration.count() << "\n";  
-            //     file2.close();
-            //     std::cout << "repairDuration appended to file successfully." << std::endl;
-            // } else {
-            //     std::cerr << "Unable to open recordORTime.txt (when writing repairDuration)" << std::endl;
-            //     return;
-            // }
 
           }
         }
@@ -2460,15 +2385,7 @@ void RepairDesign::repairNet_update(Net* net,
     
     if (repaired_net) {
 
-      // reapir one net --> construct one corresponding post buffered tree
-      // buffered_trees_post_.push_back(buffered_tree_);
-      // std::cout << "Begin Post Tree Print\n";
-      // buffered_trees_post_.back()->printTree();
-      // buffered_tree_->printTree();
-      // std::cout << "End Post Tree Print\n";
-      // std::cout << "Save Post Tree Print\n";
       repaired_net_count++;
-      // std::cout << "------------Repaired net count------------- " << repaired_net_count << std::endl;
     }
   }
   store_buffered_trees_flag_ = false;
@@ -2670,7 +2587,6 @@ void RepairDesign::makeRepeater_update(const char* reason,
   repeater_fanout = resizer_->portFanoutLoad(buffer_input_port);
   repeater_max_slew = bufferInputMaxSlew(buffer_cell, corner_);
   
-  // logger_->report("--------Add a buffer and the buffer count is ----" + std::to_string(inserted_buffer_count_));
   // Save original features
   if (buffer_order_count_ == 0){
     BufferedTreePtr& tree = buffered_trees_post_.back(); //YL: get the last tree
@@ -2680,8 +2596,7 @@ void RepairDesign::makeRepeater_update(const char* reason,
     buffered_trees_mid_.push_back(copied_tree);
 
   }
-  buffer_order_count_++; //YL: track the feature updating when insert a new buffer
-  // logger_->report("Begin createPostBufferedTree...\n");
+  buffer_order_count_++; 
   createPostBufferedTree(
     reason,
     buffer, 
@@ -2694,11 +2609,6 @@ void RepairDesign::makeRepeater_update(const char* reason,
     repeater_cap,
     drvr_output_cap,
     drvr_output_slew);
-  // logger_->report("End createPostBufferedTree...\n");
-  // // for testing
-  // std::cout<<"Start testing buffered tree...\n";
-  // testBufferedTree(repeater_in_pin,repeater_out_pin, in_net, out_net);
-  // std::cout<<"End testing buffered tree...\n";
   
   load_pins.clear();
   load_pins.push_back(repeater_in_pin);
@@ -3580,17 +3490,7 @@ void RepairDesign::saveProbNets() {
     const std::string default_approach = "rsz";
     std::string buffer_approach = (buf_approach != nullptr) ? std::string(buf_approach) : default_approach;
 
-    // for (auto& tree : buffered_trees_prob_) {
-    //   BufferedTreeNodePtr root = tree->getRoot();
-    //   if (root) {
-    //     dbNet* net_db = db_network_->staToDb(tree->getNet());
-    //     std::string net_name = net_db->getName();
-    //     int node_count = countNodes(root);
-    //     std::cout << "Net name: " << rnet_name << " has " 
-    //               << node_count << " nodes." << std::endl;
-    //   }
-    // }
-    if (buffer_approach == "MLBuf" || buffer_approach == "Hack-y") {
+    if (buffer_approach == "MLBuf" || buffer_approach == "Adhoc") {
       std::string prob_net_file = std::getenv("INPUT"); // save problematic nets
       printTreeToCSV(buffered_trees_prob_, prob_net_file, buffered_tree_print_flag);
       std::cout << "buffered_trees_prob_ saved to " << prob_net_file << std::endl;

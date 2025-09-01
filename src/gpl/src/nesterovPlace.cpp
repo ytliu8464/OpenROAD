@@ -489,7 +489,7 @@ int NesterovPlace::doNesterovPlace(int start_iter)
       }
 
       if (mlbuf_integration_flag && virtual_td_iter) {
-        // Call MLBuf / hacky baseline here to process all problematic nets
+        // Call MLBuf / adhoc baseline here to process all problematic nets
         std::string buf_approach = std::getenv("BUF_APPROACH");
         const std::string default_approach = "rsz";
         std::string buffer_approach = (buf_approach.size() != 0) ? std::string(buf_approach) : default_approach;
@@ -501,18 +501,18 @@ int NesterovPlace::doNesterovPlace(int start_iter)
           std::cout << "[INFO] prob_net = " << prob_net << std::endl;
           std::string output_file = std::getenv("OUTPUT");
           std::cout << "[INFO] output_file = " << output_file << std::endl;
-          std::string mlbuf_time_file = std::getenv("TIMEMLBuf");
-          std::cout << "[INFO] mlbuf_time_file = " << mlbuf_time_file << std::endl;
+          std::string mlbuf_code_path = std::getenv("PATHMLBUF");
+          std::cout << "[INFO] mlbuf_code_path = " << mlbuf_code_path << std::endl;
           std::string env_cluster = std::getenv("CLUSTERNUM");
           std::cout << "[INFO] env_cluster = " << env_cluster << std::endl;
           
           log_->report("[INFO] MLBuf is used");
-          std::string cmd = "/home/tool/anaconda3/envs/zhiang/bin/python /home/dgx_projects/MLBuf/virtual_buffer/MLBuf/mlbuf_infer.py "; 
+          std::string cmd = "python " + mlbuf_code_path + "/mlbuf_infer.py "; 
           cmd += "--model "+ model_pt + " "; 
           cmd += "--input "+ prob_net + " "; 
           cmd += "--output "+ output_file + " ";
-          cmd += "--timeMLBuf " + mlbuf_time_file + " ";
           cmd += "--clusterNum " + env_cluster + " ";
+          cmd += "--pathMLBuf " + mlbuf_code_path + " ";
           cmd += "--cudaID " + std::string(std::getenv("CUDAID")) + " ";
 
           std::cout << "[INFO] cmd = " << cmd << std::endl;
@@ -520,16 +520,18 @@ int NesterovPlace::doNesterovPlace(int start_iter)
           if (ret != 0) {
             log_->report("mlbuf_infer.py failed with code {}", ret);
           } 
-        } else if (buffer_approach == std::string("Hack-y")) {
-            log_->report("[INFO] Hack-y baseline is used");
+        } else if (buffer_approach == std::string("Adhoc")) {
+            log_->report("[INFO] Adhoc baseline is used");
             const std::string prob_net = std::getenv("INPUT"); // save all problematic nets
             std::string output_file = std::getenv("OUTPUT");
-            std::string cmd = "/home/tool/anaconda3/envs/zhiang/bin/python /home/dgx_projects/MLBuf/virtual_buffer/MLBuf/integrate_OR/hacky_baseline.py "; 
+            std::string code_path = std::getenv("PATHMLBUF");
+            std::string cmd = "python " + code_path + "/adhoc_baseline.py "; 
             cmd += "--input " + prob_net + " "; 
+            cmd += "--pathMLBuf " + code_path + " ";
             cmd += "--output " + output_file;
             int ret = std::system(cmd.c_str());
             if (ret != 0) {
-              log_->report("hacky_baseline.py failed with code {}", ret);
+              log_->report("adhoc_baseline.py failed with code {}", ret);
               exit(1);
             } 
         }
@@ -543,7 +545,6 @@ int NesterovPlace::doNesterovPlace(int start_iter)
         std::vector<BufferBox> bufferList;
         if (!loadBufferBoxesFromCSV(bufferCSV, bufferList)) {
           log_->report("[ERROR] Failed to read buffer boxes from ", bufferCSV.c_str()); 
-          // exit(1);
 
         } else {
           log_->report("[INFO] Successfully loaded " + std::to_string(bufferList.size()) + " buffers from CSV");
@@ -573,15 +574,6 @@ int NesterovPlace::doNesterovPlace(int start_iter)
               // nesterov->updateDensitySize();
             }
         } 
-        // else if (mlbuf_integration_manner == "cell") {
-        //   log_->report("[INFO] Integration manner: cell inflation");
-        //     for (auto& nesterov : nbVec_) {
-        //       // for each cell, calculate overlap(cell, buf), calculate inflation ratio, inflate cell
-        //       nesterov->cellInflationForMLBuf(bufferList);
-        //       nesterov->updateAreas();
-        //       nesterov->updateDensitySize(); // Question: is there anything else I should do here?
-        //     }
-        // } 
         else {
           log_->report("[ERROR] Invalid integration manner: %s", mlbuf_integration_manner.c_str());
           log_->report("[ERROR] Please set the environment variable 'Integration Manner' to 'bin' or 'cell'");
@@ -648,19 +640,6 @@ int NesterovPlace::doNesterovPlace(int start_iter)
       auto netlistModifyEt = std::chrono::high_resolution_clock::now();
       // ---------- YL MLBuf, just for test ---------
       auto netlistModifyDuration = std::chrono::duration_cast<std::chrono::milliseconds>(netlistModifyEt - netlistModifySt);
-      // Open the file in append mode
-      // std::string runtime_file = std::getenv("TIMERSZ");
-      // std::ofstream file(runtime_file, std::ios::app);
-
-      // if (file.is_open()) {
-      //     file << netlistModifyDuration.count() << std::endl; // Append the number and a newline
-      //     file.close();
-      //     std::cout << "netlistModifyDuration appended to file successfully." << std::endl;
-      // } else {
-      //     std::cerr << "Unable to open recordORTime.txt" << std::endl;
-      //     return 1; // error code
-      // }
-      // exit(0); // YL MLBuf, just for test
 
     }
     
