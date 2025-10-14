@@ -44,6 +44,12 @@
     }
 }
 
+// ispd26 (GR overflow)
+%typemap(out) uint8_t {
+    Tcl_SetIntObj($result, (int) $1);
+}
+
+
 // Wrapper for dbSet, dbVector...etc
 %define WRAP_DB_CONTAINER(T) 
 
