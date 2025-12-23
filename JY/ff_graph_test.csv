@@ -1,0 +1,4 @@
+from_ff,to_ff,slack_ns,arrival_ns,required_ns,from_x,from_y,to_x,to_y
+dpath.b_reg.out\[7\]$_DFFE_PP_,_302_,-8.69376e-11,8.69376e-11,1e+30,3564,8910,7074,9990
+dpath.b_reg.out\[13\]$_DFFE_PP_,_314_,-5.15347e-11,5.15347e-11,1e+30,10638,8640,10800,8100
+dpath.b_reg.out\[0\]$_DFFE_PP_,_315_,-3.48928e-11,3.48928e-11,1e+30,10530,2700,11178,5670

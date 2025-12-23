@@ -27,6 +27,7 @@
 
 #include "Clock.h"
 #include "CtsOptions.h"
+#include "FFGraphExtractor.h"
 #include "HTreeBuilder.h"
 #include "LatencyBalancer.h"
 #include "TechChar.h"
@@ -2773,6 +2774,12 @@ void TritonCTS::balanceMacroRegisterLatencies()
   if (totalDelayBuff) {
     logger_->info(CTS, 37, "Total number of delay buffers: {}", totalDelayBuff);
   }
+}
+
+void TritonCTS::extractFFGraph(const std::string& output_file)
+{
+  FFGraphExtractor extractor(getBlock(), openSta_, network_, logger_);
+  extractor.extractGraph(output_file);
 }
 
 }  // namespace cts

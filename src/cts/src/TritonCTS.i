@@ -498,4 +498,10 @@ reset_wire_segment_distance_unit()
 {
   getTritonCts()->getParms()->resetWireSegmentUnit();
 }
+
+void
+extract_ff_timing_graph(const char* output_file)
+{
+  getTritonCts()->extractFFGraph(output_file);
+}
 %} //inline

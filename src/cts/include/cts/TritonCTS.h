@@ -80,6 +80,9 @@ class TritonCTS
   void resetRootBuffer() { rootBuffers_.clear(); }
   void setSinkBuffer(const char* buffers);
 
+  // FF-to-FF timing graph extraction for 3D-CTS
+  void extractFFGraph(const std::string& output_file);
+
  private:
   bool isClockCellCandidate(sta::LibertyCell* cell);
   std::string selectRootBuffer(std::vector<std::string>& buffers);
