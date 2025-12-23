@@ -11,6 +11,13 @@ cmake ..
 make -j$(nproc)
 ```
 
+## Prerequisites
+
+Load required modules before running (on UCSD servers):
+```bash
+module load tcl/8.6.6 yaml-cpp/0.8.0 gcc/12.2.0
+```
+
 ## Usage
 
 ### Standalone (No ORFS required)

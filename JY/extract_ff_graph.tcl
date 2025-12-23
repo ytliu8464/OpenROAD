@@ -3,6 +3,9 @@
 # No ORFS required - just needs ODB, liberty, and SDC files
 # =============================================================
 #
+# Prerequisites (on UCSD servers):
+#   module load tcl/8.6.6 yaml-cpp/0.8.0 gcc/12.2.0
+#
 # Usage (with environment variables):
 #   ODB=<design.odb> LIB="<lib1> <lib2>" SDC=<constraint.sdc> OUTPUT=<output.csv> \
 #       openroad -no_init extract_ff_graph.tcl
@@ -38,10 +41,32 @@ set odb_file $::env(ODB)
 set lib_files $::env(LIB)
 set sdc_file $::env(SDC)
 
+# Extract design name from ODB filename for default output
+# e.g., "results/asap7/gcd/base/3_place.odb" -> "gcd_place"
+set odb_basename [file tail $odb_file]
+set odb_rootname [file rootname $odb_basename]
+# Try to get design name from path (e.g., .../gcd/base/3_place.odb)
+set path_parts [file split $odb_file]
+set design_name "design"
+foreach i [lrange [lreverse $path_parts] 0 end] {
+    if {$i ne "base" && $i ne [file tail $odb_file]} {
+        set design_name $i
+        break
+    }
+}
+# Determine stage from odb filename
+if {[string match "*place*" $odb_rootname]} {
+    set stage "place"
+} elseif {[string match "*cts*" $odb_rootname]} {
+    set stage "cts"
+} else {
+    set stage $odb_rootname
+}
+
 if {[info exists ::env(OUTPUT)]} {
     set output_file $::env(OUTPUT)
 } else {
-    set output_file "ff_timing_graph.csv"
+    set output_file "ff_timing_graph_${design_name}_${stage}.csv"
 }
 
 if {[info exists ::env(SPEF)]} {
@@ -100,7 +125,7 @@ puts "\n=============================================="
 puts "Extracting FF-to-FF timing graph..."
 puts "=============================================="
 
-cts::extract_ff_timing_graph $output_file
+cts::extract_ff_timing_graph ./JY/$output_file
 
 puts "\n=============================================="
 puts "Done! Output: $output_file"
