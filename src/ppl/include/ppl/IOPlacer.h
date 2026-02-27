@@ -14,11 +14,8 @@
 #include "odb/db.h"
 #include "odb/geom.h"
 #include "ppl/Parameters.h"
+#include "utl/Logger.h"
 #include "utl/validation.h"
-
-namespace utl {
-class Logger;
-}
 
 namespace odb {
 class dbBTerm;
@@ -38,10 +35,6 @@ class SimulatedAnnealing;
 struct Constraint;
 struct Section;
 struct Slot;
-
-using odb::Point;
-
-using utl::Logger;
 
 // A list of pins that will be placed together in the die boundary
 using PinSet = std::set<odb::dbBTerm*>;
@@ -83,7 +76,7 @@ using int64 = std::int64_t;
 class IOPlacer
 {
  public:
-  IOPlacer(odb::dbDatabase* db, Logger* logger);
+  IOPlacer(odb::dbDatabase* db, utl::Logger* logger);
   ~IOPlacer();
   void clear();
   void clearConstraints();
@@ -150,10 +143,10 @@ class IOPlacer
                  Edge edge,
                  odb::Line line,
                  bool is_die_polygon);
-  std::vector<Point> findLayerSlots(int layer,
-                                    Edge edge,
-                                    odb::Line line,
-                                    bool is_die_polygon);
+  std::vector<odb::Point> findLayerSlots(int layer,
+                                         Edge edge,
+                                         odb::Line line,
+                                         bool is_die_polygon);
   void initTopLayerGrid();
   void findSlotsForTopLayer();
   void filterObstructedSlotsForTopLayer();
@@ -269,7 +262,7 @@ class IOPlacer
   FallbackPins fallback_pins_;
   std::map<int, std::vector<odb::Rect>> layer_fixed_pins_shapes_;
 
-  Logger* logger_ = nullptr;
+  utl::Logger* logger_ = nullptr;
   std::unique_ptr<utl::Validator> validator_;
   std::unique_ptr<Parameters> parms_;
   std::vector<Slot> slots_;

@@ -46,6 +46,7 @@ class Progress;
 #define FOREACH_TOOL(X) \
   X(ANT)                \
   X(CGT)                \
+  X(CHK)                \
   X(CTS)                \
   X(CUT)                \
   X(DFT)                \
@@ -68,12 +69,14 @@ class Progress;
   X(PDN)                \
   X(PPL)                \
   X(PSM)                \
+  X(RAM)                \
   X(RCX)                \
   X(RMP)                \
   X(RSZ)                \
   X(STA)                \
   X(STT)                \
   X(TAP)                \
+  X(TST)                \
   X(UKN)                \
   X(UPF)                \
   X(UTL)
@@ -220,6 +223,8 @@ class Logger
     return (it != groups.end() && level <= it->second);
   }
 
+  int getWarningCount() const { return warning_count_; }
+
   void startPrometheusEndpoint(uint16_t port);
   std::shared_ptr<PrometheusRegistry> getRegistry();
   bool isPrometheusServerReadyToServe();
@@ -229,7 +234,7 @@ class Logger
   void unsuppressMessage(ToolId tool, int id);
 
   void addSink(spdlog::sink_ptr sink);
-  void removeSink(spdlog::sink_ptr sink);
+  void removeSink(const spdlog::sink_ptr& sink);
   void addMetricsSink(const char* metrics_filename);
   void removeMetricsSink(const char* metrics_filename);
 
@@ -277,6 +282,7 @@ class Logger
            const Args&... args)
   {
     assert(id >= 0 && id <= max_message_id);
+    message_levels_[tool][id].store(level, std::memory_order_relaxed);
     auto& counter = message_counters_[tool][id];
     auto count = counter++;
     if (count < max_message_print) {
@@ -317,6 +323,9 @@ class Logger
 
   void flushMetrics();
   void finalizeMetrics();
+  // Add new metrics for non-zero warnings. It also counts the number of
+  // unique warning types.
+  void addWarningMetrics();
 
   void setRedirectSink(std::ostream& sink_stream, bool keep_sinks = false);
   void restoreFromRedirect();
@@ -357,6 +366,9 @@ class Logger
   // from multiple threads without locks.
   using MessageCounter = std::array<std::atomic_int16_t, max_message_id + 1>;
   std::array<MessageCounter, ToolId::SIZE> message_counters_;
+  using MessageLevel
+      = std::array<std::atomic<spdlog::level::level_enum>, max_message_id + 1>;
+  std::array<MessageLevel, ToolId::SIZE> message_levels_;
   std::array<DebugGroups, ToolId::SIZE> debug_group_level_;
   bool debug_on_{false};
   std::atomic_int warning_count_{0};

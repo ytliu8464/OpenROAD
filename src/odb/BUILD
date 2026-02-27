@@ -4,7 +4,7 @@
 load("@openroad_rules_python//python:defs.bzl", "py_library")
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("//bazel:python_wrap_cc.bzl", "PYTHON_STABLE_API_DEFINE", "python_wrap_cc")
+load("//bazel:python_wrap_cc.bzl", "PYTHON_EXTENSION_LINKOPTS", "PYTHON_STABLE_API_DEFINE", "python_wrap_cc")
 load("//bazel:tcl_encode_or.bzl", "tcl_encode")
 load("//bazel:tcl_wrap_cc.bzl", "tcl_wrap_cc")
 
@@ -36,23 +36,27 @@ cc_library(
         "src/db/*.cpp",
         "src/db/*.h",
         "src/db/*.hpp",
+        "src/db/*.inc",
         "src/zutil/*.cpp",
         "src/defout/*.cpp",
         "src/defout/*.h",
         "src/defin/*.cpp",
         "src/defin/*.h",
+        "src/gdsin/*.cpp",
+        "src/gdsout/*.cpp",
         "src/lefin/*.cpp",
         "src/lefin/*.h",
         "src/lefout/*.cpp",
         "src/3dblox/*.cpp",
         "src/3dblox/*.h",
+        "include/odb/dbCompare.inc",
+        "include/odb/dbMap.inc",
     ] + [
         "src/swig/common/swig_common.cpp",
     ]),
     hdrs = glob(
         include = [
             "include/odb/*.h",
-            "include/odb/*.hpp",
         ],
         exclude = ["include/odb/MakeOdb.h"],
     ) + ["src/swig/common/swig_common.h"],
@@ -67,7 +71,10 @@ cc_library(
         "//src/odb/src/def:defzlib",
         "//src/odb/src/lef",
         "//src/odb/src/lef:lefzlib",
+        "//src/sta:opensta_lib",
         "//src/utl",
+        "@abseil-cpp//absl/base:core_headers",
+        "@abseil-cpp//absl/synchronization",
         "@boost.algorithm",
         "@boost.bind",
         "@boost.config",
@@ -85,7 +92,7 @@ cc_library(
         "@boost.regex",
         "@boost.spirit",
         "@spdlog",
-        "@tk_tcl//:tcl",
+        "@tcl_lang//:tcl",
         "@yaml-cpp",
         "@zlib",
     ],
@@ -98,6 +105,7 @@ cc_binary(
     srcs = [":swig-py"],
     defines = [PYTHON_STABLE_API_DEFINE],
     includes = ["src/swig/common"],
+    linkopts = PYTHON_EXTENSION_LINKOPTS,
     linkshared = True,
     deps = [
         ":odb",  # Depends on the core odb C++ library
@@ -139,12 +147,13 @@ cc_library(
         ":odb",
         "//:ord",
         "//src/utl",
+        "@abseil-cpp//absl/synchronization",
         "@boost.container",
         "@boost.geometry",
         "@boost.multi_array",
         "@boost.polygon",
         "@boost.stacktrace",
-        "@tk_tcl//:tcl",
+        "@tcl_lang//:tcl",
     ],
 )
 

@@ -6,8 +6,11 @@
 #include <cmath>
 #include <vector>
 
+#include "AbstractFastRouteRenderer.h"
+#include "DataType.h"
 #include "gui/gui.h"
 #include "odb/db.h"
+#include "stt/SteinerTreeBuilder.h"
 
 namespace grt {
 

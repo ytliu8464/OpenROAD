@@ -13,8 +13,12 @@ or_integration_tests(
     init_floorplan8
     init_floorplan9
     init_floorplan10
+    init_floorplan11
+    init_floorplan12
+    init_floorplan_dbl_row
     init_floorplan_even_rows
     init_floorplan_flip_sites
+    init_floorplan_gap
     init_floorplan_odd_rows
     init_floorplan_polygon
     init_floorplan_polygon2
@@ -39,6 +43,3 @@ or_integration_tests(
     upf_test
 )
 
-# Skipped
-#ifp_man_tcl_check
-#ifp_readme_msgs_check

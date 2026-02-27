@@ -15,6 +15,7 @@ cc_library(
     name = "ant",
     srcs = [
         "src/AntennaChecker.cc",
+        "src/AntennaCheckerImpl.hh",
         "src/PinType.hh",
         "src/Polygon.cc",
         "src/Polygon.hh",
@@ -33,6 +34,7 @@ cc_library(
     deps = [
         "//src/odb",
         "//src/utl",
+        "@abseil-cpp//absl/synchronization",
         "@boost.container_hash",
         "@boost.graph",
         "@boost.polygon",
@@ -57,7 +59,7 @@ cc_library(
         "//src/odb",
         "//src/utl",
         "@boost.stacktrace",
-        "@tk_tcl//:tcl",
+        "@tcl_lang//:tcl",
     ],
 )
 

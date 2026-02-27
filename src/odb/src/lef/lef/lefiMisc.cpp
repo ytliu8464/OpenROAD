@@ -29,7 +29,7 @@
 
 #include "lefiMisc.hpp"
 
-#include <string.h>
+#include <string.h>  // NOLINT(modernize-deprecated-headers): for strdup()
 
 #include <cstdio>
 #include <cstdlib>
@@ -39,6 +39,7 @@
 #include <vector>
 
 #include "lefiDebug.hpp"
+#include "lefiKRDefs.hpp"
 #include "lefiUtil.hpp"
 #include "lex.h"
 

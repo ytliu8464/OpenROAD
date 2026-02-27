@@ -93,6 +93,8 @@ class CtsOptions : public odb::dbBlockCallBackObj
   unsigned getNumMaxLeafSinks() const { return numMaxLeafSinks_; }
   void setMaxSlew(unsigned slew) { maxSlew_ = slew; }
   unsigned getMaxSlew() const { return maxSlew_; }
+  void setMaxWl(int wl) { maxWl_ = wl; }
+  int getMaxWl() const { return maxWl_; }
   void setMaxCharSlew(double slew) { maxCharSlew_ = slew; }
   double getMaxCharSlew() const { return maxCharSlew_; }
   void setMaxCharCap(double cap) { maxCharCap_ = cap; }
@@ -125,6 +127,17 @@ class CtsOptions : public odb::dbBlockCallBackObj
     clockNetsObjs_ = nets;
   }
   std::vector<odb::dbNet*> getClockNetsObjs() const { return clockNetsObjs_; }
+  void setSkipNets(odb::dbNet* nets) { skipNets_.push_back(nets); }
+  std::vector<odb::dbNet*> getSkipNets() const { return skipNets_; }
+  std::string getSkipNetsToString() const
+  {
+    std::ostringstream skip_nets_names;
+    for (const odb::dbNet* db_net : skipNets_) {
+      skip_nets_names << db_net->getConstName() << " ";
+    }
+    return skip_nets_names.str();
+  }
+  void resetSkipNets() { skipNets_.clear(); }
   void setMetricsFile(const std::string& metricFile)
   {
     metricFile_ = metricFile;
@@ -266,8 +279,6 @@ class CtsOptions : public odb::dbBlockCallBackObj
     return macroSinkClustersSizeSet_;
   }
   unsigned getNumStaticLayers() const { return numStaticLayers_; }
-  void setBalanceLevels(bool balance) { balanceLevels_ = balance; }
-  bool getBalanceLevels() const { return balanceLevels_; }
   void setNumStaticLayers(unsigned num) { numStaticLayers_ = num; }
   void resetNumStaticLayers() { numStaticLayers_ = 0; }
   void setSinkBuffer(const std::string& buffer) { sinkBuffer_ = buffer; }
@@ -320,7 +331,6 @@ class CtsOptions : public odb::dbBlockCallBackObj
 
   // Callbacks
   void inDbInstCreate(odb::dbInst* inst) override;
-  void inDbInstCreate(odb::dbInst* inst, odb::dbRegion* region) override;
 
   void setRepairClockNets(bool value) { repairClockNets_ = value; }
   bool getRepairClockNets() { return repairClockNets_; }
@@ -365,12 +375,13 @@ class CtsOptions : public odb::dbBlockCallBackObj
   unsigned numMaxLeafSinks_ = 15;
   unsigned maxFanout_ = 0;
   unsigned maxSlew_ = 4;
+  int maxWl_ = 0;
   double maxCharSlew_ = 0;
   double maxCharCap_ = 0;
-  double sinkBufferInputCap_ = 0;
   int capSteps_ = 20;
   int slewSteps_ = 7;
   unsigned charWirelengthIterations_ = 4;
+  double sinkBufferInputCap_ = 0;
   unsigned clockTreeMaxDepth_ = 100;
   bool enableFakeLutEntries_ = true;
   bool forceBuffersOnLeafLevel_ = true;
@@ -389,11 +400,11 @@ class CtsOptions : public odb::dbBlockCallBackObj
   bool macroMaxDiameterSet_ = false;
   unsigned macroSinkClustersSize_ = 4;
   bool macroSinkClustersSizeSet_ = true;
-  bool balanceLevels_ = false;
   unsigned sinkClusteringLevels_ = 0;
   unsigned numStaticLayers_ = 0;
   std::vector<std::string> bufferList_;
   std::vector<odb::dbNet*> clockNetsObjs_;
+  std::vector<odb::dbNet*> skipNets_;
   utl::Logger* logger_ = nullptr;
   stt::SteinerTreeBuilder* sttBuilder_ = nullptr;
   bool obsAware_ = true;

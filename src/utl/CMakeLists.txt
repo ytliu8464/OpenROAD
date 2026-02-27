@@ -28,7 +28,7 @@ if (Python3_FOUND AND BUILD_PYTHON)
     PRIVATE
       src
   )
-  
+
   target_link_libraries(utl_py
     PUBLIC
       spdlog::spdlog
@@ -41,6 +41,7 @@ add_library(utl_lib
   src/Metrics.cpp
   src/CFileUtils.cpp
   src/ScopedTemporaryFile.cpp
+  src/SuppressStdout.cpp
   src/Logger.cpp
   src/Progress.cpp
   src/CommandLineProgress.cpp
@@ -49,6 +50,7 @@ add_library(utl_lib
   src/decode.cpp
   src/prometheus/metrics_server.cpp
   src/histogram.cpp
+  src/unionFind.cpp
 )
 
 target_include_directories(utl_lib
@@ -62,6 +64,7 @@ target_include_directories(utl_lib
 
 target_link_libraries(utl_lib
   PUBLIC
+    absl::synchronization
     spdlog::spdlog
     ${TCL_LIBRARY}
     ${Boost_LIBRARIES}
@@ -72,7 +75,7 @@ target_sources(utl
     src/LoggerCommon.cpp
     src/MakeLogger.cpp
 )
-  
+
 target_include_directories(utl
   PUBLIC
     include
@@ -101,3 +104,4 @@ messages(
 if(ENABLE_TESTS)
   add_subdirectory(test)
 endif()
+

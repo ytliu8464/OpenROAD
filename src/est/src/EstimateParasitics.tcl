@@ -53,24 +53,24 @@ proc set_layer_rc { args } {
     flags {}
 
   if { [info exists keys(-layer)] && [info exists keys(-via)] } {
-    utl::error "ORD" 201 "Use -layer or -via but not both."
+    utl::error "EST" 201 "Use -layer or -via but not both."
   }
 
-  set corners [sta::parse_corner_or_all keys]
+  set corners [sta::parse_scene_or_null keys]
   set tech [est::get_db_tech_checked]
   if { [info exists keys(-layer)] } {
     set layer_name $keys(-layer)
     set layer [$tech findLayer $layer_name]
     if { $layer == "NULL" } {
-      utl::error "ORD" 202 "layer $layer_name not found."
+      utl::error "EST" 202 "layer $layer_name not found."
     }
 
     if { [$layer getRoutingLevel] == 0 } {
-      utl::error "ORD" 203 "$layer_name is not a routing layer."
+      utl::error "EST" 203 "$layer_name is not a routing layer."
     }
 
     if { ![info exists keys(-capacitance)] && ![info exists keys(-resistance)] } {
-      utl::error "ORD" 204 "missing -capacitance or -resistance argument."
+      utl::error "EST" 204 "missing -capacitance or -resistance argument."
     }
 
     set cap 0.0
@@ -90,7 +90,7 @@ proc set_layer_rc { args } {
     }
 
     if { $corners == "NULL" } {
-      set corners [sta::corners]
+      set corners [sta::scenes]
       # Only update the db layers if -corner not specified.
       est::set_dblayer_wire_rc $layer $res $cap
     }
@@ -102,11 +102,11 @@ proc set_layer_rc { args } {
     set layer_name $keys(-via)
     set layer [$tech findLayer $layer_name]
     if { $layer == "NULL" } {
-      utl::error "ORD" 205 "via $layer_name not found."
+      utl::error "EST" 205 "via $layer_name not found."
     }
 
     if { [info exists keys(-capacitance)] } {
-      utl::warn "ORD" 206 "-capacitance not supported for vias."
+      utl::warn "EST" 206 "-capacitance not supported for vias."
     }
 
     if { [info exists keys(-resistance)] } {
@@ -115,7 +115,7 @@ proc set_layer_rc { args } {
       set res [sta::resistance_ui_sta $res]
 
       if { $corners == "NULL" } {
-        set corners [sta::corners]
+        set corners [sta::scenes]
         # Only update the db layers if -corner not specified.
         est::set_dbvia_wire_r $layer $res
       }
@@ -124,10 +124,10 @@ proc set_layer_rc { args } {
         est::set_layer_rc_cmd $layer $corner $res 0.0
       }
     } else {
-      utl::error "ORD" 208 "no -resistance specified for via."
+      utl::error "EST" 208 "no -resistance specified for via."
     }
   } else {
-    utl::error "ORD" 209 "missing -layer or -via argument."
+    utl::error "EST" 209 "missing -layer or -via argument."
   }
 }
 
@@ -137,12 +137,14 @@ proc report_layer_rc { args } {
   sta::parse_key_args "report_layer_rc" args \
     keys {-corner} \
     flags {}
-  set corner [sta::parse_corner_or_all keys]
+  set corner [sta::parse_scene_or_null keys]
   set tech [est::get_db_tech_checked]
   set no_routing_layers [$tech getRoutingLayerCount]
   ord::ensure_units_initialized
-  set res_unit "[sta::unit_scaled_suffix "resistance"]/[sta::unit_scaled_suffix "distance"]"
-  set cap_unit "[sta::unit_scaled_suffix "capacitance"]/[sta::unit_scaled_suffix "distance"]"
+  set res_unit \
+    "[sta::unit_scale_abbrev_suffix "resistance"]/[sta::unit_scale_abbrev_suffix "distance"]"
+  set cap_unit \
+    "[sta::unit_scale_abbrev_suffix "capacitance"]/[sta::unit_scale_abbrev_suffix "distance"]"
   set res_convert [expr [sta::resistance_sta_ui 1.0] / [sta::distance_sta_ui 1.0]]
   set cap_convert [expr [sta::capacitance_sta_ui 1.0] / [sta::distance_sta_ui 1.0]]
 
@@ -163,7 +165,7 @@ proc report_layer_rc { args } {
   }
   puts "------------------------------------------------"
 
-  set res_unit "[sta::unit_scaled_suffix "resistance"]"
+  set res_unit "[sta::unit_scale_abbrev_suffix "resistance"]"
   set res_convert [sta::resistance_sta_ui 1.0]
   puts ""
   puts "   Layer   | Via Resistance "
@@ -200,7 +202,7 @@ proc set_wire_rc { args } {
           -h_resistance -h_capacitance -v_resistance -v_capacitance} \
     flags {-clock -signal -data}
 
-  set corner [sta::parse_corner_or_all keys]
+  set corner [sta::parse_scene_or_null keys]
 
   set h_wire_res 0.0
   set h_wire_cap 0.0
@@ -384,7 +386,7 @@ proc set_wire_rc { args } {
 
   set corners $corner
   if { $corner == "NULL" } {
-    set corners [sta::corners]
+    set corners [sta::scenes]
   }
   foreach corner $corners {
     if { $signal } {
@@ -401,9 +403,9 @@ proc set_wire_rc { args } {
 namespace eval est {
 proc check_corner_wire_caps { } {
   set have_rc 1
-  foreach corner [sta::corners] {
+  foreach corner [sta::scenes] {
     if { [est::wire_signal_capacitance $corner] == 0.0 } {
-      utl::warn EST 18 "wire capacitance for corner [$corner name] is zero.\
+      utl::warn EST 18 "wire capacitance for corner $corner is zero.\
         Use the set_wire_rc command to set wire resistance and capacitance."
       set have_rc 0
     }

@@ -19,7 +19,6 @@ cc_library(
         "src/CtsObserver.h",
         "src/HTreeBuilder.h",
         "src/LatencyBalancer.h",
-        "src/LevelBalancer.h",
         "src/SinkClustering.h",
         "src/TreeBuilder.h",
         "src/Util.h",
@@ -41,7 +40,6 @@ cc_library(
         "src/CtsOptions.cpp",
         "src/HTreeBuilder.cpp",
         "src/LatencyBalancer.cpp",
-        "src/LevelBalancer.cpp",
         "src/SinkClustering.cpp",
         "src/TechChar.cpp",
         "src/TreeBuilder.cpp",
@@ -69,7 +67,7 @@ cc_library(
         "@boost.container_hash",
         "@boost.polygon",
         "@boost.unordered",
-        "@com_github_quantamhd_lemon//:lemon",
+        "@coin-or-lemon//:lemon",
     ],
 )
 
@@ -100,7 +98,7 @@ cc_library(
         "//src/rsz",
         "//src/utl",
         "@boost.stacktrace",
-        "@tk_tcl//:tcl",
+        "@tcl_lang//:tcl",
     ],
 )
 

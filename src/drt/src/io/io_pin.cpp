@@ -5,9 +5,13 @@
 #include <tuple>
 #include <vector>
 
+#include "db/obj/frMaster.h"
 #include "frBaseTypes.h"
 #include "io/io.h"
+#include "odb/dbTypes.h"
 #include "odb/geom.h"
+
+using odb::dbTechLayerDir;
 
 namespace drt {
 

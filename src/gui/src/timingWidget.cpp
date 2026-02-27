@@ -11,6 +11,7 @@
 #include <QLabel>
 #include <QMenu>
 #include <QMessageBox>
+#include <QModelIndexList>
 #include <QPushButton>
 #include <QSettings>
 #include <QSortFilterProxyModel>
@@ -18,16 +19,19 @@
 #include <QWidget>
 #include <memory>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "db_sta/dbSta.hh"
+#include "gui/gui.h"
 #include "gui_utils.h"
 #include "odb/db.h"
 #include "odb/defout.h"
 #include "sta/Liberty.hh"
 #include "sta/SdcClass.hh"
 #include "staGui.h"
+#include "staGuiInterface.h"
 
 namespace gui {
 
@@ -71,6 +75,7 @@ TimingWidget::TimingWidget(QWidget* parent)
   controls_layout->insertStretch(2);
   control_frame->setLayout(controls_layout);
   layout->addWidget(control_frame);
+  update_button_->setEnabled(false);
 
   // top half
   delay_widget_->addTab(setup_timing_table_view_, "Setup");
@@ -128,7 +133,7 @@ void TimingWidget::setColumnDisplayMenu()
     action->setCheckable(true);
     action->setChecked(true);
 
-    connect(action, &QAction::triggered, this, [=](bool checked) {
+    connect(action, &QAction::triggered, this, [=, this](bool checked) {
       hideColumn(column_index, checked);
     });
 
@@ -351,6 +356,24 @@ void TimingWidget::addCommandsMenuActions()
   connect(commands_menu_->addAction("Write path DEF"),
           &QAction::triggered,
           [this] { writePathDef(timing_paths_table_index_, kFromStartToEnd); });
+
+  QMenu* focus_nets_menu = new QMenu("Focus Nets", this);
+
+  auto add_focus_action
+      = [&](const QString& menu_entry, TimingPath::PathSection path_section) {
+          connect(focus_nets_menu->addAction(menu_entry),
+                  &QAction::triggered,
+                  [this, path_section] {
+                    focusNets(timing_paths_table_index_, path_section);
+                  });
+        };
+
+  add_focus_action("All", TimingPath::PathSection::kAll);
+  add_focus_action("Launch", TimingPath::PathSection::kLaunch);
+  add_focus_action("Data", TimingPath::PathSection::kData);
+  add_focus_action("Capture", TimingPath::PathSection::kCapture);
+
+  commands_menu_->addMenu(focus_nets_menu);
 }
 
 void TimingWidget::showCommandsMenu(const QPoint& pos)
@@ -391,6 +414,20 @@ void TimingWidget::writePathDef(const QModelIndex& selected_index,
   const std::string file_name
       = fmt::format("path{}.def", selected_index.row() + 1);
   def_out.writeBlock(block, file_name.c_str());
+}
+
+void TimingWidget::focusNets(const QModelIndex& selected_index,
+                             const TimingPath::PathSection& path_section)
+{
+  TimingPathsModel* focus_model
+      = static_cast<TimingPathsModel*>(focus_view_->model());
+  TimingPath* selected_path = focus_model->getPathAt(selected_index);
+  std::vector<odb::dbNet*> nets = selected_path->getNets(path_section);
+
+  Gui* gui = Gui::get();
+  for (odb::dbNet* net : nets) {
+    gui->addFocusNet(net);
+  }
 }
 
 // The nodes must be written within curly braces to
@@ -517,7 +554,7 @@ QString TimingWidget::generateClosestMatchString(CommandType type,
 
   command += focus_view_ == setup_timing_table_view_ ? " -path_delay max"
                                                      : " -path_delay min";
-  command += " -fields {capacitance slew input_pins nets fanout} -format "
+  command += " -fields {capacitance slew input_pins net fanout} -format "
             "full_clock_expanded";
 
   return command;
@@ -632,6 +669,8 @@ void TimingWidget::highlightPathStage(TimingPathDetailModel* model,
 
 void TimingWidget::populatePaths()
 {
+  update_button_->setEnabled(false);
+
   clearPathDetails();
 
   const auto from = settings_->getFromPins();
@@ -640,6 +679,8 @@ void TimingWidget::populatePaths()
   const sta::ClockSet* clks = settings_->getClocks();
 
   populateAndSortModels(from, thru, to, "" /* path group name */, clks);
+
+  update_button_->setEnabled(true);
 }
 
 void TimingWidget::populateAndSortModels(
@@ -649,10 +690,20 @@ void TimingWidget::populateAndSortModels(
     const std::string& path_group_name,
     const sta::ClockSet* clks)
 {
-  setup_timing_paths_model_->populateModel(
-      from, thru, to, path_group_name, clks);
-  hold_timing_paths_model_->populateModel(
-      from, thru, to, path_group_name, clks);
+  try {
+    setup_timing_paths_model_->populateModel(
+        from, thru, to, path_group_name, clks);
+    hold_timing_paths_model_->populateModel(
+        from, thru, to, path_group_name, clks);
+  } catch (const std::runtime_error& error) {
+    setup_timing_paths_model_->resetModel();
+    hold_timing_paths_model_->resetModel();
+
+    QApplication::restoreOverrideCursor();
+
+    QMessageBox::critical(this, error.what(), "Failed to populate timing.");
+    return;
+  }
 
   // honor selected sort
   auto setup_header = setup_timing_table_view_->horizontalHeader();
@@ -772,6 +823,37 @@ void TimingWidget::hideEvent(QHideEvent* event)
   toggleRenderer(false);
 }
 
+void TimingWidget::showWorstTimingPath(bool setup)
+{
+  if (setup_timing_paths_model_ == nullptr
+      || hold_timing_paths_model_ == nullptr) {
+    return;
+  }
+
+  if (setup_timing_paths_model_->rowCount() == 0
+      && hold_timing_paths_model_->rowCount() == 0) {
+    populatePaths();
+  }
+
+  QTableView* table_view
+      = setup ? setup_timing_table_view_ : hold_timing_table_view_;
+  QAbstractItemModel* model = table_view->model();
+  if (model->rowCount() > 0) {
+    QModelIndex index = model->index(0, 0);
+    table_view->setCurrentIndex(index);
+    // Ensure the selection signal is emitted even if the index was already
+    // selected
+    selectedRowChanged(table_view->selectionModel()->selection(),
+                       QItemSelection());
+  }
+}
+
+void TimingWidget::clearSelection()
+{
+  setup_timing_table_view_->clearSelection();
+  hold_timing_table_view_->clearSelection();
+}
+
 void TimingWidget::modelWasReset()
 {
   setup_timing_table_view_->resizeColumnsToContents();
@@ -797,6 +879,7 @@ void TimingWidget::toggleRenderer(bool visible)
 void TimingWidget::setBlock(odb::dbBlock* block)
 {
   dbchange_listener_->addOwner(block);
+  update_button_->setEnabled(true);
 }
 
 void TimingWidget::showSettings()

@@ -7,12 +7,12 @@
 #include <functional>
 #include <limits>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "boost/multi_array.hpp"
 #include "gui/gui.h"
 
@@ -23,7 +23,7 @@ class Rect;
 
 namespace sta {
 class dbSta;
-class Corner;
+class Scene;
 }  // namespace sta
 
 namespace utl {
@@ -181,10 +181,10 @@ class HeatMapDataSource
   void addToMap(const odb::Rect& region, double value);
   virtual void combineMapData(bool base_has_value,
                               double& base,
-                              const double new_data,
-                              const double data_area,
-                              const double intersection_area,
-                              const double rect_area)
+                              double new_data,
+                              double data_area,
+                              double intersection_area,
+                              double rect_area)
       = 0;
   virtual void correctMapScale(Map& map) {}
   void updateMapColors();
@@ -243,7 +243,7 @@ class HeatMapDataSource
 
   std::vector<MapSetting> settings_;
 
-  std::mutex ensure_mutex_;
+  absl::Mutex ensure_mutex_;
 };
 
 class HeatMapRenderer : public Renderer
@@ -350,9 +350,9 @@ class PowerDensityDataSource : public RealValueHeatMapDataSource
   bool include_leakage_ = true;
   bool include_switching_ = true;
 
-  std::string corner_;
+  std::string scene_;
 
-  sta::Corner* getCorner() const;
+  sta::Scene* getScene() const;
 };
 
 }  // namespace gui

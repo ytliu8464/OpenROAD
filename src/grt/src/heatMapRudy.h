@@ -33,7 +33,6 @@ class RUDYDataSource : public gui::GlobalRoutingDataSource,
 
   // from dbBlockCallBackObj API
   void inDbInstCreate(odb::dbInst*) override;
-  void inDbInstCreate(odb::dbInst*, odb::dbRegion*) override;
   void inDbInstDestroy(odb::dbInst*) override;
   void inDbInstPlacementStatusBefore(odb::dbInst*,
                                      const odb::dbPlacementStatus&) override;
@@ -49,15 +48,16 @@ class RUDYDataSource : public gui::GlobalRoutingDataSource,
   bool populateMap() override;
   void combineMapData(bool base_has_value,
                       double& base,
-                      const double new_data,
-                      const double data_area,
-                      const double intersection_area,
-                      const double rect_area) override;
+                      double new_data,
+                      double data_area,
+                      double intersection_area,
+                      double rect_area) override;
 
  private:
   grt::GlobalRouter* grouter_;
   odb::dbDatabase* db_;
   grt::Rudy* rudy_;
+  bool selection_only_;
 };
 
 }  // namespace grt

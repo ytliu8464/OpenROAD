@@ -5,7 +5,9 @@ load("@bazel_skylib//rules:common_settings.bzl", "string_flag")
 load("@openroad_rules_python//python:defs.bzl", "py_library")
 load("@rules_cc//cc:cc_binary.bzl", "cc_binary")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
-load("//bazel:python_wrap_cc.bzl", "PYTHON_STABLE_API_DEFINE", "python_wrap_cc")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("//bazel:notification.bzl", "notification_rule")
+load("//bazel:python_wrap_cc.bzl", "PYTHON_EXTENSION_LINKOPTS", "PYTHON_STABLE_API_DEFINE", "python_wrap_cc")
 load("//bazel:tcl_encode_or.bzl", "tcl_encode")
 load("//bazel:tcl_wrap_cc.bzl", "tcl_wrap_cc")
 
@@ -18,10 +20,27 @@ package(
     ],
 )
 
+# Notification target to notify user if --config=opt (with LTO) is not used.
+notification_rule(
+    name = "opt_notification",
+    is_opt = select(
+        {
+            ":lto_on": True,
+            "//conditions:default": False,
+        },
+    ),
+)
+
+config_setting(
+    name = "lto_on",
+    values = {"copt": "-flto"},
+)
+
 exports_files([
     "LICENSE",
     "src/Design.i",
     "src/Exception.i",
+    "src/options.i",
 ])
 
 string_flag(
@@ -49,7 +68,6 @@ config_setting(
 
 OPENROAD_LIBRARY_DEPS = [
     ":openroad_version",
-    ":ord",
     "//src/ant",
     "//src/ant:ui",
     "//src/cgt",
@@ -60,6 +78,7 @@ OPENROAD_LIBRARY_DEPS = [
     "//src/dbSta:dbNetwork",
     "//src/dbSta:dbReadVerilog",
     "//src/dbSta:dbSdcNetwork",
+    "//src/dbSta:IpChecker",
     "//src/dbSta:SpefWriter",
     "//src/dbSta:ui",
     "//src/dft",
@@ -90,6 +109,7 @@ OPENROAD_LIBRARY_DEPS = [
     "//src/pdn",
     "//src/ppl",
     "//src/psm",
+    "//src/ram",
     "//src/rcx",
     "//src/rcx:ui",
     "//src/rmp",
@@ -104,7 +124,8 @@ OPENROAD_LIBRARY_DEPS = [
     "//src/upf:ui",
     "//src/utl",
     "//src/utl:ui",
-    "@edu_berkeley_abc//:abc-lib",
+    "@abc",
+    ":ord",
 ] + select(
     {
         ":platform_cli": ["//src/gui"],
@@ -123,6 +144,7 @@ OPENROAD_COPTS = [
     "-Wformat-security",
     "-Wno-sign-compare",
     "-Wno-unused-parameter",
+    "-Wmismatched-tags",
     "-fopenmp",
 ]
 
@@ -150,6 +172,7 @@ cc_binary(
     deps = [
         ":openroad_lib",
         ":openroad_version",
+        ":opt_notification",
         ":ord",
         "//bazel:runfiles",
         "//src/cut",
@@ -158,7 +181,7 @@ cc_binary(
         "//src/utl",
         "@boost.stacktrace",
         "@rules_cc//cc/runfiles",
-        "@tk_tcl//:tcl",
+        "@tcl_lang//:tcl",
     ],
 )
 
@@ -186,11 +209,13 @@ cc_library(
         "include",
     ],
     visibility = ["//visibility:public"],
-    deps = OPENROAD_LIBRARY_DEPS + [
+    deps = [
         "//src/sta:opensta_lib",
+        "@abseil-cpp//absl/base:core_headers",
+        "@abseil-cpp//absl/synchronization",
         "@boost.stacktrace",
-        "@tk_tcl//:tcl",
-    ],
+        "@tcl_lang//:tcl",
+    ] + OPENROAD_LIBRARY_DEPS,
 )
 
 cc_library(
@@ -208,6 +233,7 @@ cc_library(
         "include/ord",
     ],
     visibility = ["//:__subpackages__"],
+    deps = ["@abseil-cpp//absl/synchronization"],
 )
 
 cc_library(
@@ -258,6 +284,7 @@ cc_binary(
     name = "_openroadpy.so",
     srcs = [":openroad_swig-py"],
     defines = [PYTHON_STABLE_API_DEFINE],
+    linkopts = PYTHON_EXTENSION_LINKOPTS,
     linkshared = True,
     deps = [
         ":openroad_lib",  # Depends on the core odb C++ library
@@ -297,6 +324,7 @@ py_library(
     imports = ["."],
     visibility = ["//visibility:public"],
     deps = [
+        "//src/gpl:gpl_py",
         "//src/odb:odb_py",
         "//src/utl:utl_py",
     ],
@@ -360,4 +388,19 @@ filegroup(
     srcs = [
         "src/Design.i",
     ],
+)
+
+filegroup(
+    name = "options_swig",
+    srcs = [
+        "src/options.i",
+    ],
+    visibility = ["@//:__subpackages__"],
+)
+
+sh_binary(
+    name = "install",
+    srcs = ["//bazel:install.sh"],
+    args = [],
+    data = [":openroad"],
 )

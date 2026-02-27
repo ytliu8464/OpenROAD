@@ -101,7 +101,10 @@ cc_library(
     deps = [
         ":groute",
         "//:ord",
+        "//src/dbSta",
+        "//src/dbSta:dbNetwork",
         "//src/odb",
+        "//src/sta:opensta_lib",
         "//src/stt",
         "//src/utl",
     ],
@@ -209,7 +212,7 @@ cc_library(
         "@boost.iterator",
         "@boost.stacktrace",
         "@openmp",
-        "@tk_tcl//:tcl",
+        "@tcl_lang//:tcl",
     ],
 )
 

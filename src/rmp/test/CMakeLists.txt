@@ -17,11 +17,11 @@ or_integration_tests(
     memory_nangate45
     aes_dontuse_nangate45
     aes_donttouch_nangate45
+    aes_annealing
+    gcd_annealing1
+    gcd_annealing2
 )
 
-# Skipped
-#rmp_man_tcl_check
-#rmp_readme_msgs_check
 
 if (ENABLE_TESTS)
     add_subdirectory(cpp)

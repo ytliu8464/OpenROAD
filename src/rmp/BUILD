@@ -14,10 +14,14 @@ cc_library(
     name = "rmp",
     srcs = [
         "src/Restructure.cpp",
+        "src/annealing_strategy.cpp",
+        "src/annealing_strategy.h",
         "src/delay_optimization_strategy.cpp",
         "src/delay_optimization_strategy.h",
         "src/logic_optimization_strategy.h",
         "src/resynthesis_strategy.h",
+        "src/utils.cpp",
+        "src/utils.h",
         "src/zero_slack_strategy.cpp",
         "src/zero_slack_strategy.h",
     ],
@@ -40,6 +44,9 @@ cc_library(
         "//src/rsz",
         "//src/sta:opensta_lib",
         "//src/utl",
+        "@abc",
+        "@abseil-cpp//absl/base:core_headers",
+        "@abseil-cpp//absl/synchronization",
         "@boost.bind",
         "@boost.config",
         "@boost.fusion",
@@ -47,7 +54,6 @@ cc_library(
         "@boost.optional",
         "@boost.phoenix",
         "@boost.spirit",
-        "@edu_berkeley_abc//:abc-lib",
     ],
 )
 
@@ -77,7 +83,7 @@ cc_library(
         "//src/sta:opensta_lib",
         "//src/utl",
         "@boost.stacktrace",
-        "@tk_tcl//:tcl",
+        "@tcl_lang//:tcl",
     ],
 )
 

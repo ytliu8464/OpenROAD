@@ -1,8 +1,14 @@
-source $::env(LOAD_POWER_TCL)
+source $::env(LOAD_MOCK_ARRAY_TCL)
 
-set instances [get_cells ces*/Multiplier*]
-if { [llength $instances] != 64 } {
-  puts "Error: Expected to find 64 Multiplier instances, found [llength $instances]"
+set vcd_file $::env(VCD_STIMULI)
+log_cmd read_vcd -scope TOP/MockArray $vcd_file
+
+set instances [get_cells ces*/io_outs_*_mult]
+
+set num [expr $::env(ARRAY_COLS) * $::env(ARRAY_ROWS) * 4]
+
+if { [llength $instances] != $num } {
+  puts "Error: Expected to find $num instances, found [llength $instances]"
   exit 1
 }
 

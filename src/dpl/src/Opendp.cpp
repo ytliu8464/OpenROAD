@@ -10,17 +10,22 @@
 #include <iterator>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "PlacementDRC.h"
-#include "boost/geometry/geometry.hpp"
+#include "boost/geometry/index/predicates.hpp"
 #include "dpl/OptMirror.h"
 #include "graphics/DplObserver.h"
+#include "infrastructure/Coordinates.h"
+#include "infrastructure/DecapObjects.h"  // NOLINT(misc-include-cleaner) Needed for DecapCell/GapInfo completeness in ~Opendp()
 #include "infrastructure/Grid.h"
 #include "infrastructure/Objects.h"
 #include "infrastructure/Padding.h"
 #include "infrastructure/network.h"
+#include "odb/db.h"
+#include "odb/geom.h"
 #include "odb/util.h"
 #include "util/journal.h"
 #include "utl/Logger.h"
@@ -32,6 +37,7 @@ using std::string;
 
 using utl::DPL;
 
+using odb::dbInst;
 using odb::Rect;
 
 ////////////////////////////////////////////////////////////////
@@ -43,10 +49,12 @@ bool Opendp::isMultiRow(const Node* cell) const
 
 ////////////////////////////////////////////////////////////////
 
-Opendp::Opendp(dbDatabase* db, Logger* logger) : logger_(logger), db_(db)
+Opendp::Opendp(odb::dbDatabase* db, utl::Logger* logger)
+    : logger_(logger), db_(db)
 {
   dummy_cell_ = std::make_unique<Node>();
   dummy_cell_->setPlaced(true);
+  dummy_cell_->setFixed(true);
   padding_ = std::make_shared<Padding>();
   grid_ = std::make_unique<Grid>();
   grid_->init(logger);
@@ -61,12 +69,12 @@ void Opendp::setPaddingGlobal(const int left, const int right)
   padding_->setPaddingGlobal(GridX{left}, GridX{right});
 }
 
-void Opendp::setPadding(dbInst* inst, const int left, const int right)
+void Opendp::setPadding(odb::dbInst* inst, const int left, const int right)
 {
   padding_->setPadding(inst, GridX{left}, GridX{right});
 }
 
-void Opendp::setPadding(dbMaster* master, const int left, const int right)
+void Opendp::setPadding(odb::dbMaster* master, const int left, const int right)
 {
   padding_->setPadding(master, GridX{left}, GridX{right});
 }
@@ -74,6 +82,24 @@ void Opendp::setPadding(dbMaster* master, const int left, const int right)
 void Opendp::setDebug(std::unique_ptr<DplObserver>& observer)
 {
   debug_observer_ = std::move(observer);
+}
+
+void Opendp::setJumpMoves(const int jump_moves)
+{
+  jump_moves_ = jump_moves;
+}
+
+void Opendp::setIterativePlacement(const bool iterative)
+{
+  iterative_placement_ = iterative;
+}
+
+void Opendp::setDeepIterativePlacement(const bool deep_iterative)
+{
+  deep_iterative_placement_ = deep_iterative;
+  if (deep_iterative) {
+    iterative_placement_ = true;
+  }
 }
 
 void Opendp::setJournal(Journal* journal)
@@ -88,13 +114,17 @@ Journal* Opendp::getJournal() const
 
 void Opendp::detailedPlacement(const int max_displacement_x,
                                const int max_displacement_y,
-                               const std::string& report_file_name)
+                               const std::string& report_file_name,
+                               bool incremental)
 {
+  incremental_ = incremental;
   importDb();
   adjustNodesOrient();
-  for (const auto& node : network_->getNodes()) {
-    if (node->getType() == Node::CELL && !node->isFixed()) {
-      node->setPlaced(false);
+  if (!incremental_) {
+    for (const auto& node : network_->getNodes()) {
+      if (node->getType() == Node::CELL && !node->isFixed()) {
+        node->setPlaced(false);
+      }
     }
   }
 
@@ -138,7 +168,7 @@ void Opendp::updateDbInstLocations()
 {
   for (auto& cell : network_->getNodes()) {
     if (!cell->isFixed() && cell->isStdCell()) {
-      dbInst* db_inst_ = cell->getDbInst();
+      odb::dbInst* db_inst_ = cell->getDbInst();
       // Only move the instance if necessary to avoid triggering callbacks.
       if (db_inst_->getOrient() != cell->getOrient()) {
         db_inst_->setOrient(cell->getOrient());
@@ -199,9 +229,7 @@ void Opendp::findDisplacementStats()
     }
     const int displacement = disp(cell.get());
     displacement_sum_ += displacement;
-    if (displacement > displacement_max_) {
-      displacement_max_ = displacement;
-    }
+    displacement_max_ = std::max<int64_t>(displacement, displacement_max_);
   }
   if (network_->getNumCells() != 0) {
     displacement_avg_ = displacement_sum_ / network_->getNumCells();
@@ -216,6 +244,67 @@ void Opendp::optimizeMirroring()
 {
   OptimizeMirroring opt(logger_, db_);
   opt.run();
+}
+
+void Opendp::resetGlobalSwapParams()
+{
+  global_swap_params_ = GlobalSwapParams();
+}
+
+void Opendp::configureGlobalSwapParams(
+    int passes,
+    double tolerance,
+    double tradeoff,
+    double area_weight,
+    double pin_weight,
+    double user_weight,
+    int sampling_moves,
+    int normalization_interval,
+    double profiling_excess,
+    const std::vector<double>& budget_multipliers)
+{
+  if (passes > 0) {
+    global_swap_params_.passes = passes;
+  }
+  if (tolerance > 0.0) {
+    global_swap_params_.tolerance = tolerance;
+  }
+  if (tradeoff >= 0.0) {
+    global_swap_params_.tradeoff = std::max(0.0, std::min(1.0, tradeoff));
+  }
+  if (area_weight >= 0.0) {
+    global_swap_params_.area_weight = area_weight;
+  }
+  if (pin_weight >= 0.0) {
+    global_swap_params_.pin_weight = pin_weight;
+  }
+  if (user_weight > 0.0) {
+    global_swap_params_.user_congestion_weight = user_weight;
+  }
+  if (sampling_moves > 0) {
+    global_swap_params_.sampling_moves = sampling_moves;
+  }
+  if (normalization_interval > 0) {
+    global_swap_params_.normalization_interval = normalization_interval;
+  }
+  if (profiling_excess > 0.0) {
+    global_swap_params_.profiling_excess = profiling_excess;
+  }
+  if (!budget_multipliers.empty()) {
+    global_swap_params_.budget_multipliers = budget_multipliers;
+  }
+  if (global_swap_params_.budget_multipliers.empty()) {
+    global_swap_params_.budget_multipliers = {1.0};
+  }
+  if (global_swap_params_.area_weight < 0.0
+      || global_swap_params_.pin_weight < 0.0) {
+    logger_->error(DPL, 1280, "Utilization weights must be non-negative.");
+  }
+  if (global_swap_params_.area_weight == 0.0
+      && global_swap_params_.pin_weight == 0.0) {
+    logger_->error(
+        DPL, 1281, "At least one utilization weight must be greater than 0.");
+  }
 }
 
 int Opendp::disp(const Node* cell) const
@@ -234,12 +323,12 @@ int Opendp::padGlobalRight() const
   return padding_->padGlobalRight().v;
 }
 
-int Opendp::padLeft(dbInst* inst) const
+int Opendp::padLeft(odb::dbInst* inst) const
 {
   return padding_->padLeft(inst).v;
 }
 
-int Opendp::padRight(dbInst* inst) const
+int Opendp::padRight(odb::dbInst* inst) const
 {
   return padding_->padRight(inst).v;
 }
@@ -263,13 +352,85 @@ void Opendp::findOverlapInRtree(const bgBox& queryBox,
                        std::back_inserter(overlaps));
 }
 
+void Opendp::setInitialGridCells()
+{
+  std::unordered_set<Node*> conflicted;
+  const DbuX site_width = grid_->getSiteWidth();
+
+  // Check which cells are missaligned with rows
+  for (auto& node : network_->getNodes()) {
+    if (node->getType() == Node::CELL && !node->isFixed() && node->isPlaced()) {
+      const GridX x = grid_->gridX(node.get());
+      const GridY y = grid_->gridSnapDownY(node.get());
+      if (node->getLeft() != gridToDbu(x, site_width)
+          || node->getBottom() != grid_->gridYToDbu(y)
+          || !canBePlaced(node.get(), x, y)) {
+        conflicted.insert(node.get());
+      }
+    }
+  }
+
+  // Check which cells are overlapping with other cells
+  for (auto& node : network_->getNodes()) {
+    if (node->getType() == Node::CELL && !node->isFixed() && node->isPlaced()) {
+      if (conflicted.contains(node.get())) {
+        continue;
+      }
+
+      bool node_conflicted = false;
+      grid_->visitCellPixels(
+          *node, false, [&](Pixel* pixel, [[maybe_unused]] bool padded) {
+            if (pixel->cell != nullptr && pixel->cell != node.get()) {
+              node_conflicted = true;
+              if (!pixel->cell->isFixed()) {
+                conflicted.insert(pixel->cell);
+              }
+            } else {
+              pixel->cell = node.get();
+            }
+          });
+
+      if (node_conflicted) {
+        conflicted.insert(node.get());
+      }
+    }
+  }
+
+  for (GridY y{0}; y < grid_->getRowCount(); y++) {
+    for (GridX x{0}; x < grid_->getRowSiteCount(); x++) {
+      Pixel& pixel = grid_->pixel(y, x);
+      if (pixel.cell != nullptr && !pixel.cell->isFixed()) {
+        pixel.cell = nullptr;
+      }
+    }
+  }
+
+  for (auto& node : network_->getNodes()) {
+    if (node->getType() == Node::CELL && !node->isFixed() && node->isPlaced()) {
+      if (conflicted.find(node.get()) == conflicted.end()) {
+        // This cell is perfectly legal and has no conflicts.
+        grid_->visitCellPixels(
+            *node, false, [&](Pixel* pixel, [[maybe_unused]] bool padded) {
+              pixel->cell = node.get();
+              pixel->util = 1.0;
+            });
+        grid_->paintCellPadding(node.get());
+      } else {
+        // This cell is either illegal or was part of an overlap conflict.
+        // Unplace it.
+        unplaceCell(node.get());
+      }
+    }
+  }
+}
+
 void Opendp::setFixedGridCells()
 {
   for (auto& cell : network_->getNodes()) {
     if (cell->getType() == Node::CELL && cell->isFixed()) {
       grid_->visitCellPixels(*cell, true, [&](Pixel* pixel, bool padded) {
         if (padded) {
-          pixel->padding_reserved_by.insert(cell.get());
+          pixel->padding_reserved_by = cell.get();
         } else {
           setGridCell(*cell, pixel);
         }
@@ -353,7 +514,7 @@ void Opendp::groupInitPixels2()
   }
 }
 
-dbInst* Opendp::getAdjacentInstance(dbInst* inst, bool left) const
+odb::dbInst* Opendp::getAdjacentInstance(odb::dbInst* inst, bool left) const
 {
   const Rect inst_rect = inst->getBBox()->getBox();
   DbuX x_dbu = left ? DbuX{inst_rect.xMin() - 1} : DbuX{inst_rect.xMax() + 1};
@@ -364,7 +525,7 @@ dbInst* Opendp::getAdjacentInstance(dbInst* inst, bool left) const
 
   Pixel* pixel = grid_->gridPixel(x, y);
 
-  dbInst* adjacent_inst = nullptr;
+  odb::dbInst* adjacent_inst = nullptr;
 
   // do not return macros, endcaps and tapcells
   if (pixel != nullptr && pixel->cell && pixel->cell->getDbInst()->isCore()) {
@@ -378,19 +539,19 @@ std::vector<dbInst*> Opendp::getAdjacentInstancesCluster(dbInst* inst) const
 {
   const bool left = true;
   const bool right = false;
-  std::vector<dbInst*> adj_inst_cluster;
+  std::vector<odb::dbInst*> adj_inst_cluster;
 
-  dbInst* left_inst = getAdjacentInstance(inst, left);
+  odb::dbInst* left_inst = getAdjacentInstance(inst, left);
   while (left_inst != nullptr) {
     adj_inst_cluster.push_back(left_inst);
     // the right instance can be ignored, since it was added in the line above
     left_inst = getAdjacentInstance(left_inst, left);
   }
 
-  std::reverse(adj_inst_cluster.begin(), adj_inst_cluster.end());
+  std::ranges::reverse(adj_inst_cluster);
   adj_inst_cluster.push_back(inst);
 
-  dbInst* right_inst = getAdjacentInstance(inst, right);
+  odb::dbInst* right_inst = getAdjacentInstance(inst, right);
   while (right_inst != nullptr) {
     adj_inst_cluster.push_back(right_inst);
     // the left instance can be ignored, since it was added in the line above
@@ -480,6 +641,19 @@ void Opendp::groupInitPixels()
       }
     }
   }
+}
+
+odb::Point Opendp::getOdbLocation(const Node* cell) const
+{
+  odb::dbBox* odb_bbox = cell->getDbInst()->getBBox();
+  return {odb_bbox->xMin(), odb_bbox->yMin()};
+}
+
+odb::Point Opendp::getDplLocation(const Node* cell) const
+{
+  DbuX final_x{core_.xMin() + cell->getLeft()};
+  DbuY final_y{core_.yMin() + cell->getBottom()};
+  return {final_x.v, final_y.v};
 }
 
 int divRound(const int dividend, const int divisor)

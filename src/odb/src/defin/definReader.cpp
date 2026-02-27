@@ -5,6 +5,7 @@
 
 #include <cassert>
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -15,6 +16,24 @@
 #include <vector>
 
 #include "boost/algorithm/string/replace.hpp"
+#include "defiBlockage.hpp"
+#include "defiComponent.hpp"
+#include "defiDefs.hpp"
+#include "defiFill.hpp"
+#include "defiGroup.hpp"
+#include "defiMisc.hpp"
+#include "defiNet.hpp"
+#include "defiNonDefault.hpp"
+#include "defiPath.hpp"
+#include "defiPinCap.hpp"
+#include "defiPinProp.hpp"
+#include "defiProp.hpp"
+#include "defiRegion.hpp"
+#include "defiRowTrack.hpp"
+#include "defiScanchain.hpp"
+#include "defiSite.hpp"
+#include "defiVia.hpp"
+#include "definBase.h"
 #include "definBlockage.h"
 #include "definComponent.h"
 #include "definComponentMaskShift.h"
@@ -30,7 +49,9 @@
 #include "definRow.h"
 #include "definSNet.h"
 #include "definTracks.h"
+#include "definTypes.h"
 #include "definVia.h"
+#include "defrReader.hpp"
 #include "defzlib.hpp"
 #include "odb/db.h"
 #include "odb/dbSet.h"
@@ -1018,7 +1039,7 @@ int definReader::pinCallback(DefParser::defrCallbackType_e /* unused: type */,
 
       // For a given port, add all boxes/shapes belonging to that port
       for (int i = 0; i < port->numLayer(); ++i) {
-        uint mask = port->layerMask(i);
+        uint32_t mask = port->layerMask(i);
 
         int xl, yl, xh, yh;
         port->bounds(i, &xl, &yl, &xh, &yh);
@@ -1059,7 +1080,7 @@ int definReader::pinCallback(DefParser::defrCallbackType_e /* unused: type */,
 
     // Add boxes/shapes for the pin with single port
     for (int i = 0; i < pin->numLayer(); ++i) {
-      uint mask = pin->layerMask(i);
+      uint32_t mask = pin->layerMask(i);
 
       int xl, yl, xh, yh;
       pin->bounds(i, &xl, &yl, &xh, &yh);
@@ -1674,10 +1695,10 @@ int definReader::specialNetCallback(
       std::string layerName;
 
       int pathId;
-      uint next_mask = 0;
-      uint next_via_bottom_mask = 0;
-      uint next_via_cut_mask = 0;
-      uint next_via_top_mask = 0;
+      uint32_t next_mask = 0;
+      uint32_t next_via_bottom_mask = 0;
+      uint32_t next_via_cut_mask = 0;
+      uint32_t next_via_top_mask = 0;
       while ((pathId = path->next()) != DefParser::DEFIPATH_DONE) {
         switch (pathId) {
           case DefParser::DEFIPATH_LAYER:
@@ -1807,7 +1828,8 @@ void definReader::setLibs(std::vector<dbLib*>& lib_names)
 
 void definReader::readChip(std::vector<dbLib*>& libs,
                            const char* file,
-                           dbChip* chip)
+                           dbChip* chip,
+                           const bool issue_callback)
 {
   init();
   setLibs(libs);
@@ -1876,7 +1898,9 @@ void definReader::readChip(std::vector<dbLib*>& libs,
 
   _logger->info(utl::ODB, 134, "Finished DEF file: {}", file);
 
-  _db->triggerPostReadDef(_block, _mode == defin::FLOORPLAN);
+  if (issue_callback) {
+    _db->triggerPostReadDef(_block, _mode == defin::FLOORPLAN);
+  }
 }
 
 static inline bool hasSuffix(const std::string& str, const std::string& suffix)

@@ -6,7 +6,7 @@
 #include <utility>
 #include <vector>
 
-#include "db_sta/dbNetwork.hh"
+#include "gui/heatMap.h"
 #include "odb/db.h"
 #include "odb/dbTransform.h"
 #include "odb/dbTypes.h"
@@ -110,11 +110,6 @@ void PlacementDensityDataSource::onHide()
 }
 
 void PlacementDensityDataSource::inDbInstCreate(odb::dbInst*)
-{
-  destroyMap();
-}
-
-void PlacementDensityDataSource::inDbInstCreate(odb::dbInst*, odb::dbRegion*)
 {
   destroyMap();
 }

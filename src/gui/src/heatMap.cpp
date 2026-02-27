@@ -19,19 +19,18 @@
 #include <limits>
 #include <map>
 #include <memory>
-#include <mutex>
 #include <set>
 #include <string>
 #include <utility>
 #include <variant>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
 #include "db_sta/dbNetwork.hh"
 #include "db_sta/dbSta.hh"
 #include "gui/gui.h"
 #include "heatMapSetup.h"
 #include "odb/db.h"
-#include "sta/Corner.hh"
 #include "sta/PowerClass.hh"
 #include "utl/Logger.h"
 
@@ -97,7 +96,7 @@ void HeatMapDataSource::dumpToFile(const std::string& file)
 
   const double dbu_to_micron = block_->getDbUnitsPerMicron();
 
-  csv << "x0,y0,x1,y1,value" << std::endl;
+  csv << "x0,y0,x1,y1,value (" << getValueUnits() << ")\n";
   for (const auto& map_col : map_) {
     for (const auto& map_value : map_col) {
       if (!map_value->has_value) {
@@ -112,7 +111,7 @@ void HeatMapDataSource::dumpToFile(const std::string& file)
       csv << box_rect.xMax() / dbu_to_micron << ",";
       csv << box_rect.yMax() / dbu_to_micron << ",";
       csv << std::scientific << std::setprecision(6);
-      csv << scaled_value << std::endl;
+      csv << scaled_value << '\n';
     }
   }
 
@@ -216,10 +215,10 @@ void HeatMapDataSource::setShowLegend(bool legend)
 
 Painter::Color HeatMapDataSource::getColor(double value) const
 {
-  auto find_val
-      = std::find_if(color_lower_bounds_.begin(),
-                     color_lower_bounds_.end(),
-                     [value](const double other) { return other >= value; });
+  auto find_val = std::ranges::find_if(
+      color_lower_bounds_,
+
+      [value](const double other) { return other >= value; });
   const double color_index
       = std::distance(color_lower_bounds_.begin(), find_val);
   return color_generator_.getColor(
@@ -338,12 +337,10 @@ void HeatMapDataSource::setSettings(const Renderer::Settings& settings)
 HeatMapDataSource::MapView HeatMapDataSource::getMapView(
     const odb::Rect& bounds)
 {
-  const auto x_low_find
-      = std::lower_bound(map_x_grid_.begin(), map_x_grid_.end(), bounds.xMin());
+  const auto x_low_find = std::ranges::lower_bound(map_x_grid_, bounds.xMin());
   const auto x_high_find
       = std::upper_bound(x_low_find, map_x_grid_.end(), bounds.xMax());
-  const auto y_low_find
-      = std::lower_bound(map_y_grid_.begin(), map_y_grid_.end(), bounds.yMin());
+  const auto y_low_find = std::ranges::lower_bound(map_y_grid_, bounds.yMin());
   const auto y_high_find
       = std::upper_bound(y_low_find, map_y_grid_.end(), bounds.yMax());
 
@@ -526,7 +523,7 @@ bool HeatMapDataSource::hasData() const
 
 void HeatMapDataSource::ensureMap()
 {
-  std::unique_lock<std::mutex> lock(ensure_mutex_);
+  absl::MutexLock lock(&ensure_mutex_);
 
   if (destroy_map_) {
     debugPrint(logger_, utl::GUI, "HeatMap", 1, "{} - Destroying map", name_);
@@ -607,7 +604,7 @@ void HeatMapDataSource::updateMapColors()
         lower_bound = display_range_max_ - lower_bound + display_range_min_;
       }
     } else {
-      std::reverse(color_lower_bounds_.begin(), color_lower_bounds_.end());
+      std::ranges::reverse(color_lower_bounds_);
     }
   } else {
     const double step = (display_range_max_ - display_range_min_) / color_count;
@@ -650,9 +647,7 @@ std::vector<std::pair<int, double>> HeatMapDataSource::getLegendValues() const
       = (getRealRangeMaximumValue() - linear_start) / (count - 1);
   for (int i = 0; i < count; i++) {
     int idx = std::round(i * index_incr);
-    if (idx > color_count) {
-      idx = color_count;
-    }
+    idx = std::min(idx, color_count);
     double value = color_lower_bounds_[idx];
     if (!log_scale_) {
       value = linear_step * i + linear_start;
@@ -842,7 +837,7 @@ void HeatMapRenderer::setSettings(const Settings& settings)
   Renderer::setSettings(settings);
   Renderer::Settings data_settings;
   for (const auto& [name, value] : settings) {
-    if (name.find(kDatasourcePrefix) == 0) {
+    if (name.starts_with(kDatasourcePrefix)) {
       data_settings[name.substr(strlen(kDatasourcePrefix))] = value;
     }
   }
@@ -1084,17 +1079,17 @@ PowerDensityDataSource::PowerDensityDataSource(sta::dbSta* sta,
   setIssueRedraw(true);
 
   addMultipleChoiceSetting(
-      "Corner",
-      "Corner:",
+      "Scene",
+      "Scene:",
       [this]() {
-        std::vector<std::string> corners;
-        for (auto* corner : *sta_->corners()) {
-          corners.emplace_back(corner->name());
+        std::vector<std::string> scenes;
+        for (auto* scene : sta_->scenes()) {
+          scenes.emplace_back(scene->name());
         }
-        return corners;
+        return scenes;
       },
-      [this]() -> std::string { return corner_; },
-      [this](const std::string& value) { corner_ = value; });
+      [this]() -> std::string { return scene_; },
+      [this](const std::string& value) { scene_ = value; });
   addBooleanSetting(
       "Internal",
       "Internal power:",
@@ -1133,7 +1128,7 @@ bool PowerDensityDataSource::populateMap()
       continue;
     }
 
-    sta::PowerResult power = sta_->power(network->dbToSta(inst), getCorner());
+    sta::PowerResult power = sta_->power(network->dbToSta(inst), getScene());
 
     float pwr = 0.0;
     if (include_all) {
@@ -1168,16 +1163,16 @@ void PowerDensityDataSource::combineMapData(bool base_has_value,
   base += (new_data / data_area) * intersection_area;
 }
 
-sta::Corner* PowerDensityDataSource::getCorner() const
+sta::Scene* PowerDensityDataSource::getScene() const
 {
-  auto* corner = sta_->findCorner(corner_.c_str());
-  if (corner != nullptr) {
-    return corner;
+  auto* scene = sta_->findScene(scene_);
+  if (scene != nullptr) {
+    return scene;
   }
 
-  auto corners = sta_->corners()->corners();
-  if (!corners.empty()) {
-    return corners[0];
+  auto scenes = sta_->scenes();
+  if (!scenes.empty()) {
+    return scenes[0];
   }
 
   return nullptr;

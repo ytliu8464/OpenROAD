@@ -12,8 +12,8 @@
 #include "db_sta/dbSta.hh"
 #include "odb/geom.h"
 #include "sta/Hash.hh"
+#include "sta/Network.hh"
 #include "sta/NetworkClass.hh"
-#include "sta/Vector.hh"
 #include "stt/SteinerTreeBuilder.h"
 #include "stt/flute.h"
 #include "utl/Logger.h"
@@ -22,42 +22,28 @@ const int SteinerNull = -1;
 
 namespace est {
 
-using utl::Logger;
-
-using odb::Point;
-
-using sta::dbNetwork;
-using sta::hashIncr;
-using sta::Net;
-using sta::Network;
-using sta::Pin;
-using sta::PinSeq;
-
-using stt::SteinerTreeBuilder;
-
 class PointHash
 {
  public:
-  size_t operator()(const Point& pt) const;
+  size_t operator()(const odb::Point& pt) const;
 };
 
 class PointEqual
 {
  public:
-  bool operator()(const Point& pt1, const Point& pt2) const;
+  bool operator()(const odb::Point& pt1, const odb::Point& pt2) const;
 };
 
 class PinLoc
 {
  public:
-  const Pin* pin;
-  Point loc;
+  const sta::Pin* pin;
+  odb::Point loc;
 };
 
-using LocPinMap = std::unordered_map<Point, PinSeq, PointHash, PointEqual>;
+using LocPinMap
+    = std::unordered_map<odb::Point, sta::PinSeq, PointHash, PointEqual>;
 using SteinerPt = int;
-
-class SteinerTree;
 
 // Wrapper for stt::Tree
 //
@@ -71,20 +57,22 @@ class SteinerTree;
 class SteinerTree
 {
  public:
-  SteinerTree(const Pin* drvr_pin, sta::dbNetwork* db_network, Logger* logger);
-  SteinerTree(Point drvr_location, Logger* logger);
-  sta::Vector<PinLoc>& pinlocs() { return pinlocs_; }
+  SteinerTree(const sta::Pin* drvr_pin,
+              sta::dbNetwork* db_network,
+              utl::Logger* logger);
+  SteinerTree(odb::Point drvr_location, utl::Logger* logger);
+  std::vector<PinLoc>& pinlocs() { return pinlocs_; }
   int pinCount() const { return pinlocs_.size(); }
   int branchCount() const;
   void branch(int index,
               // Return values.
-              Point& pt1,
+              odb::Point& pt1,
               int& steiner_pt1,
-              Point& pt2,
+              odb::Point& pt2,
               int& steiner_pt2,
               int& wire_length);
   stt::Branch& branch(int index) { return tree_.branch[index]; }
-  void report(Logger* logger, const Network* network);
+  void report(utl::Logger* logger, const sta::Network* network);
   // Return the steiner pt connected to the driver pin.
   SteinerPt drvrPt() const;
   // new APIs for gate cloning
@@ -105,31 +93,31 @@ class SteinerTree
                      const std::vector<SteinerPt>& adj1,
                      const std::vector<SteinerPt>& adj2,
                      const std::vector<SteinerPt>& adj3);
-  int distance(SteinerPt from, SteinerPt to) const;
 
   // "Accessors" for SteinerPts.
-  const char* name(SteinerPt pt, const Network* network);
-  const PinSeq* pins(SteinerPt pt) const;
-  const Pin* pin(SteinerPt pt) const;
-  Point location(SteinerPt pt) const;
+  const char* name(SteinerPt pt, const sta::Network* network);
+  const sta::PinSeq* pins(SteinerPt pt) const;
+  const sta::Pin* pin(SteinerPt pt) const;
+  odb::Point location(SteinerPt pt) const;
   void setTree(const stt::Tree& tree);
   void setHasInputPort(bool input_port);
   stt::Tree& fluteTree() { return tree_; }
   void createSteinerPtToPinMap();
-  void locAddPin(const Point& loc, const Pin* pin);
+  void locAddPin(const odb::Point& loc, const sta::Pin* pin);
+  int getMaxIndex() const;
 
   static constexpr SteinerPt null_pt = -1;
 
  private:
   stt::Tree tree_;
-  const Point drvr_location_;
+  const odb::Point drvr_location_;
   int drvr_steiner_pt_ = 0;      // index into tree_.branch
-  sta::Vector<PinLoc> pinlocs_;  // Initial input
+  std::vector<PinLoc> pinlocs_;  // Initial input
   LocPinMap loc_pin_map_;        // location -> pins map
   std::vector<SteinerPt> left_;
   std::vector<SteinerPt> right_;
-  std::vector<const Pin*> point_pin_array_;
-  Logger* logger_;
+  std::vector<const sta::Pin*> point_pin_array_;
+  utl::Logger* logger_;
 };
 
 }  // namespace est

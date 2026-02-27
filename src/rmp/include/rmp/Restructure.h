@@ -3,25 +3,26 @@
 
 #pragma once
 
+#include <cstdint>
 #include <fstream>
 #include <functional>
+#include <optional>
+#include <random>
 #include <set>
 #include <string>
 #include <vector>
 
 #include "db_sta/dbSta.hh"
 #include "rsz/Resizer.hh"
-#include "sta/Corner.hh"
+#include "sta/Delay.hh"
 #include "sta/Liberty.hh"
 #include "sta/NetworkClass.hh"
+#include "sta/Scene.hh"
+#include "utl/Logger.h"
 #include "utl/unique_name.h"
 
 namespace abc {
 }  // namespace abc
-
-namespace utl {
-class Logger;
-}
 
 namespace odb {
 class dbDatabase;
@@ -40,8 +41,6 @@ class dbSta;
 }  // namespace sta
 
 namespace rmp {
-
-using utl::Logger;
 
 enum class Mode
 {
@@ -65,13 +64,26 @@ class Restructure
   ~Restructure();
 
   void reset();
-  void resynth(sta::Corner* corner);
+  void resynth(sta::Scene* corner);
+  void resynthAnnealing(sta::Scene* corner);
   void run(char* liberty_file_name,
            float slack_threshold,
            unsigned max_depth,
            char* workdir_name,
            char* abc_logfile);
 
+  void setAnnealingSeed(std::mt19937::result_type seed)
+  {
+    annealing_seed_ = seed;
+  }
+  void setAnnealingTemp(float temp) { annealing_temp_ = temp; }
+  void setAnnealingIters(unsigned iters) { annealing_iters_ = iters; }
+  void setAnnealingRevertAfter(unsigned revert_after)
+  {
+    annealing_revert_after_ = revert_after;
+  }
+  void setAnnealingInitialOps(unsigned ops) { annealing_init_ops_ = ops; }
+  void setSlackThreshold(sta::Slack thresh) { slack_threshold_ = thresh; }
   void setMode(const char* mode_name);
   void setTieLoPort(sta::LibertyPort* loport);
   void setTieHiPort(sta::LibertyPort* hiport);
@@ -81,16 +93,18 @@ class Restructure
   void getBlob(unsigned max_depth);
   void runABC();
   void postABC(float worst_slack);
-  bool writeAbcScript(std::string file_name);
+  bool writeAbcScript(const std::string& file_name);
   void writeOptCommands(std::ofstream& script);
   void initDB();
   void getEndPoints(sta::PinSet& ends, bool area_mode, unsigned max_depth);
   int countConsts(odb::dbBlock* top_block);
   void removeConstCells();
   void removeConstCell(odb::dbInst* inst);
-  bool readAbcLog(std::string abc_file_name, int& level_gain, float& delay_val);
+  bool readAbcLog(const std::string& abc_file_name,
+                  int& level_gain,
+                  float& delay_val);
 
-  Logger* logger_;
+  utl::Logger* logger_;
   utl::UniqueName name_generator_;
   std::string logfile_;
   std::string locell_;
@@ -105,6 +119,14 @@ class Restructure
   rsz::Resizer* resizer_;
   est::EstimateParasitics* estimate_parasitics_;
   odb::dbBlock* block_ = nullptr;
+
+  // Annealing
+  std::optional<std::mt19937::result_type> annealing_seed_;
+  std::optional<float> annealing_temp_;
+  unsigned annealing_iters_ = 100;
+  std::optional<unsigned> annealing_revert_after_;
+  unsigned annealing_init_ops_ = 10;
+  sta::Slack slack_threshold_ = 0;
 
   std::string input_blif_file_name_;
   std::string output_blif_file_name_;

@@ -8,6 +8,12 @@ def _regression_test_impl(ctx):
     # Declare the test script output
     test_script = ctx.actions.declare_file(ctx.label.name + "_test.sh")
 
+    # Determine test type: use explicit type if provided, otherwise infer from extension
+    if ctx.attr.test_type:
+        test_type = ctx.attr.test_type
+    else:
+        test_type = "python" if ctx.file.test_file.path.endswith(".py") else "tcl"
+
     # Generate the test script
     ctx.actions.write(
         output = test_script,
@@ -16,15 +22,21 @@ def _regression_test_impl(ctx):
 set -ex
 export TEST_NAME_BAZEL={TEST_NAME_BAZEL}
 export TEST_FILE={TEST_FILE}
+export TEST_TYPE={TEST_TYPE}
 export OPENROAD_EXE={OPENROAD_EXE}
 export REGRESSION_TEST={REGRESSION_TEST}
+export TEST_CHECK_LOG={TEST_CHECK_LOG}
+export TEST_CHECK_PASSFAIL={TEST_CHECK_PASSFAIL}
 exec "{bazel_test_sh}" "$@"
 """.format(
             bazel_test_sh = ctx.file.bazel_test_sh.short_path,
             TEST_NAME_BAZEL = ctx.attr.test_name,
             TEST_FILE = ctx.file.test_file.short_path,
+            TEST_TYPE = test_type,
             OPENROAD_EXE = ctx.executable.openroad.short_path,
             REGRESSION_TEST = ctx.file.regression_test.short_path,
+            TEST_CHECK_LOG = "True" if ctx.attr.check_log else "False",
+            TEST_CHECK_PASSFAIL = "True" if ctx.attr.check_passfail else "False",
         ),
         is_executable = True,
     )
@@ -55,6 +67,14 @@ regression_rule_test = rule(
             doc = "The Bazel test shell script.",
             allow_single_file = True,
         ),
+        "check_log": attr.bool(
+            doc = "Diff the output log against <test_name>.ok",
+            default = True,
+        ),
+        "check_passfail": attr.bool(
+            doc = "Check the output log contains pass or OK in the last line",
+            default = False,
+        ),
         "data": attr.label_list(
             doc = "Additional test files required for the test.",
             allow_files = True,
@@ -79,6 +99,10 @@ regression_rule_test = rule(
         "test_name": attr.string(
             doc = "The name of the test.",
             mandatory = True,
+        ),
+        "test_type": attr.string(
+            doc = "Test type: 'tcl', 'python' (via openroad), or 'standalone_python'. Auto-detected if not specified.",
+            default = "",
         ),
     },
     executable = True,
@@ -110,20 +134,30 @@ def regression_test(
     # name = "foo-tcl", test_file = "foo.tcl" to this regression test macro.
     test_files = native.glob(
         [name + "." + ext for ext in [
-            # TODO once Python is supported, add the .py files to the
-            # "py",
+            "py",
             "tcl",
         ]],
         allow_empty = True,  # Allow to be empty; see also TODO above.
     )
+    if not test_files:
+        fail("No test file found for " + name)
     data = _pop(kwargs, "data", [])
     size = _pop(kwargs, "size", "small")
+    test_type = _pop(kwargs, "test_type", "")
+    tags = _pop(kwargs, "tags", [])
     for test_file in test_files:
         ext = test_file.split(".")[-1]
+
+        # Python tests that need openroad -python are disabled because
+        # the Bazel build doesn't include Python embedding support.
+        # Tests with test_type="standalone_python" can still run.
+        is_openroad_python_test = ext == "py" and test_type != "standalone_python"
+        test_tags = tags + (["manual"] if is_openroad_python_test else [])
         regression_rule_test(
             name = name + "-" + ext + "_test",
             test_file = test_file,
             test_name = name,
+            test_type = test_type,
             data = [
                 "//test:regression_resources",
             ] + test_files + data,
@@ -136,5 +170,6 @@ def regression_test(
             #
             # https://bazel.build/reference/be/common-definitions#test.size
             size = size,
+            tags = test_tags,
             **kwargs
         )

@@ -8,8 +8,8 @@
 #include <optional>
 #include <string>
 
+#include "odb/db.h"
 #include "odb/dbBlockCallBackObj.h"
-#include "odb/dbCompare.h"
 
 namespace odb {
 class dbDatabase;
@@ -20,7 +20,7 @@ class dbTechLayer;
 
 namespace sta {
 class dbSta;
-class Corner;
+class Scene;
 }  // namespace sta
 namespace utl {
 class Logger;
@@ -43,8 +43,6 @@ enum class GeneratedSourceType
   kBumps
 };
 
-using odb::dbMaster;
-
 class PDNSim : public odb::dbBlockCallBackObj
 {
  public:
@@ -58,6 +56,9 @@ class PDNSim : public odb::dbBlockCallBackObj
 
     // Straps
     int strap_track_pitch = 10;
+
+    // Source resistance
+    float resistance = 0.0;  // Ohms
   };
 
   using IRDropByPoint = std::map<odb::Point, double>;
@@ -70,10 +71,10 @@ class PDNSim : public odb::dbBlockCallBackObj
          dpl::Opendp* opendp);
   ~PDNSim() override;
 
-  void setNetVoltage(odb::dbNet* net, sta::Corner* corner, double voltage);
-  void setInstPower(odb::dbInst* inst, sta::Corner* corner, float power);
+  void setNetVoltage(odb::dbNet* net, sta::Scene* corner, double voltage);
+  void setInstPower(odb::dbInst* inst, sta::Scene* corner, float power);
   void analyzePowerGrid(odb::dbNet* net,
-                        sta::Corner* corner,
+                        sta::Scene* corner,
                         GeneratedSourceType source_type,
                         const std::string& voltage_file,
                         bool use_prev_solution,
@@ -82,12 +83,12 @@ class PDNSim : public odb::dbBlockCallBackObj
                         const std::string& error_file,
                         const std::string& voltage_source_file);
   void writeSpiceNetwork(odb::dbNet* net,
-                         sta::Corner* corner,
+                         sta::Scene* corner,
                          GeneratedSourceType source_type,
                          const std::string& spice_file,
                          const std::string& voltage_source_file);
   void getIRDropForLayer(odb::dbNet* net,
-                         sta::Corner* corner,
+                         sta::Scene* corner,
                          odb::dbTechLayer* layer,
                          IRDropByPoint& ir_drop) const;
   bool checkConnectivity(odb::dbNet* net,
@@ -105,6 +106,9 @@ class PDNSim : public odb::dbBlockCallBackObj
   void inDbNetDestroy(odb::dbNet*) override;
   void inDbBTermPostConnect(odb::dbBTerm*) override;
   void inDbBTermPostDisConnect(odb::dbBTerm*, odb::dbNet*) override;
+  void inDbBPinCreate(odb::dbBPin*) override;
+  void inDbBPinAddBox(odb::dbBox*) override;
+  void inDbBPinRemoveBox(odb::dbBox*) override;
   void inDbBPinDestroy(odb::dbBPin*) override;
   void inDbSWireAddSBox(odb::dbSBox*) override;
   void inDbSWireRemoveSBox(odb::dbSBox*) override;
@@ -115,7 +119,7 @@ class PDNSim : public odb::dbBlockCallBackObj
                          IRDropByPoint& ir_drop) const;
 
   // Functions of decap cells
-  void addDecapMaster(dbMaster* decap_master, double decap_cap);
+  void addDecapMaster(odb::dbMaster* decap_master, double decap_cap);
   void insertDecapCells(double target, const char* net_name);
 
  private:
@@ -138,9 +142,9 @@ class PDNSim : public odb::dbBlockCallBackObj
   GeneratedSourceSettings generated_source_settings_;
 
   std::map<odb::dbNet*, std::unique_ptr<IRSolver>> solvers_;
-  std::map<odb::dbNet*, std::map<sta::Corner*, double>> user_voltages_;
-  std::map<odb::dbInst*, std::map<sta::Corner*, float>> user_powers_;
+  std::map<odb::dbNet*, std::map<sta::Scene*, double>> user_voltages_;
+  std::map<odb::dbInst*, std::map<sta::Scene*, float>> user_powers_;
 
-  sta::Corner* last_corner_ = nullptr;
+  sta::Scene* last_corner_ = nullptr;
 };
 }  // namespace psm

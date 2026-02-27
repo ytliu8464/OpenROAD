@@ -16,10 +16,7 @@
 #include "Util.h"
 #include "odb/db.h"
 #include "sta/Delay.hh"
-
-namespace utl {
-class Logger;
-}  // namespace utl
+#include "utl/Logger.h"
 
 namespace sta {
 class dbSta;
@@ -30,8 +27,6 @@ class Graph;
 }  // namespace sta
 
 namespace cts {
-
-using utl::Logger;
 
 struct GraphNode
 {
@@ -53,7 +48,7 @@ class LatencyBalancer
  public:
   LatencyBalancer(TreeBuilder* root,
                   const CtsOptions* options,
-                  Logger* logger,
+                  utl::Logger* logger,
                   odb::dbDatabase* db,
                   sta::dbNetwork* network,
                   sta::dbSta* sta,
@@ -66,7 +61,8 @@ class LatencyBalancer
         network_(network),
         openSta_(sta),
         wireSegmentUnit_(scalingUnit),
-        capPerDBU_(capPerDBU)
+        capPerDBU_(capPerDBU),
+        worseDelay_(std::numeric_limits<float>::min())
   {
   }
 
@@ -98,10 +94,6 @@ class LatencyBalancer
       int srcX,
       int srcY,
       const std::vector<odb::dbITerm*>& sinksInput);
-  odb::dbInst* createDelayBuffer(odb::dbNet* driverNet,
-                                 const std::string& clockName,
-                                 int locX,
-                                 int locY);
   bool propagateClock(odb::dbITerm* input);
   bool isSink(odb::dbITerm* iterm);
 
@@ -109,16 +101,16 @@ class LatencyBalancer
 
   TreeBuilder* root_ = nullptr;
   const CtsOptions* options_ = nullptr;
-  Logger* logger_ = nullptr;
+  utl::Logger* logger_ = nullptr;
   odb::dbDatabase* db_ = nullptr;
   sta::dbNetwork* network_ = nullptr;
   sta::dbSta* openSta_ = nullptr;
   sta::Graph* timingGraph_ = nullptr;
   double wireSegmentUnit_;
-  float worseDelay_;
   float bufferDelay_;
   double capPerDBU_;
-  int delayBufIndex_;
+  float worseDelay_;
+  int delayBufIndex_{0};
   std::vector<GraphNode> graph_;
   std::map<std::string, TreeBuilder*> inst2builder_;
 };

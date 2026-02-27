@@ -4,13 +4,16 @@
 #include "VTSwapMove.hh"
 
 #include <cmath>
+#include <unordered_set>
 
 #include "BaseMove.hh"
 #include "odb/db.h"
 #include "sta/Delay.hh"
 #include "sta/Liberty.hh"
+#include "sta/LibertyClass.hh"
 #include "sta/NetworkClass.hh"
 #include "sta/Path.hh"
+#include "sta/PathExpanded.hh"
 #include "utl/Logger.h"
 
 namespace rsz {
@@ -31,7 +34,7 @@ using sta::Slew;
 bool VTSwapSpeedMove::doMove(const Path* drvr_path,
                              int drvr_index,
                              Slack drvr_slack,
-                             PathExpanded* expanded,
+                             sta::PathExpanded* expanded,
                              float setup_slack_margin)
 {
   Pin* drvr_pin;
@@ -60,6 +63,27 @@ bool VTSwapSpeedMove::doMove(const Path* drvr_path,
                   network_->pathName(drvr_pin),
                   drvr_cell->name(),
                   best_cell->name());
+  return false;
+}
+
+// This is a special move used during separate critical cell VT swap routine
+bool VTSwapSpeedMove::doMove(Instance* drvr,
+                             std::unordered_set<Instance*>& notSwappable)
+{
+  LibertyCell* best_lib_cell;
+  if (resizer_->checkAndMarkVTSwappable(drvr, notSwappable, best_lib_cell)) {
+    if (replaceCell(drvr, best_lib_cell)) {
+      addMove(drvr);
+      debugMovePrint1("ACCEPT vt_swap {}: -> {}",
+                      network_->pathName(drvr),
+                      best_lib_cell->name());
+      debugMovePrint3(
+          "vt_swap {} -> {}", network_->pathName(drvr), best_lib_cell->name());
+      return true;
+    }
+  }
+
+  debugMovePrint1("REJECT vt_swap {} failed", network_->pathName(drvr));
   return false;
 }
 
@@ -120,7 +144,7 @@ bool VTSwapSpeedMove::isSwappable(const Path*& drvr_path,
     return false;
   }
 
-  LibertyCellSeq equiv_cells = resizer_->getVTEquivCells(drvr_cell);
+  sta::LibertyCellSeq equiv_cells = resizer_->getVTEquivCells(drvr_cell);
   best_cell = equiv_cells.empty() ? nullptr : equiv_cells.back();
   if (best_cell == drvr_cell) {
     best_cell = nullptr;

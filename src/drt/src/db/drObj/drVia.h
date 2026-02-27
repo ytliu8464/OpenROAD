@@ -6,10 +6,12 @@
 #include <memory>
 #include <utility>
 
+#include "db/drObj/drPin.h"
 #include "db/drObj/drRef.h"
 #include "db/tech/frViaDef.h"
 #include "dr/FlexMazeTypes.h"
 #include "frBaseTypes.h"
+#include "odb/dbTypes.h"
 #include "odb/geom.h"
 
 namespace drt {
@@ -71,8 +73,8 @@ class drVia : public drRef
    * setTransform
    */
 
-  dbOrientType getOrient() const override { return dbOrientType(); }
-  void setOrient(const dbOrientType& tmpOrient) override { ; }
+  odb::dbOrientType getOrient() const override { return odb::dbOrientType(); }
+  void setOrient(const odb::dbOrientType& tmpOrient) override { ; }
   odb::Point getOrigin() const override { return origin_; }
   void setOrigin(const odb::Point& tmpPoint) override { origin_ = tmpPoint; }
   odb::dbTransform getTransform() const override

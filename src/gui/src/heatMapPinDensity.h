@@ -3,10 +3,8 @@
 
 #pragma once
 
-#include "db_sta/dbSta.hh"
 #include "gui/heatMap.h"
 #include "odb/dbBlockCallBackObj.h"
-#include "sta/Corner.hh"
 
 namespace gui {
 
@@ -24,7 +22,6 @@ class PinDensityDataSource : public RealValueHeatMapDataSource,
 
   // from dbBlockCallBackObj API
   void inDbInstCreate(odb::dbInst*) override;
-  void inDbInstCreate(odb::dbInst*, odb::dbRegion*) override;
   void inDbInstDestroy(odb::dbInst*) override;
   void inDbInstPlacementStatusBefore(odb::dbInst*,
                                      const odb::dbPlacementStatus&) override;

@@ -29,13 +29,15 @@
 
 #include "defrData.hpp"
 
-#include <string.h>
+#include <string.h>  // NOLINT(modernize-deprecated-headers): for strdup()
 
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
+#include "defiKRDefs.hpp"
+#include "defrCallBacks.hpp"
 #include "defrSettings.hpp"
 
 BEGIN_DEF_PARSER_NAMESPACE

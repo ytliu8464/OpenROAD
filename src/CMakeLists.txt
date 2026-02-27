@@ -66,7 +66,7 @@ if(USE_SYSTEM_OPENSTA)
     IMPORTED_LOCATION "${OPENSTA_LIBRARY}"
   )
   if(CUDD_LIB)
-    set_target_properties(OpenSTA PROPERTIES 
+    set_target_properties(OpenSTA PROPERTIES
       INTERFACE_LINK_LIBRARIES "${CUDD_LIB}"
     )
   endif()
@@ -147,6 +147,8 @@ include(UseSWIG)
 find_package(Boost CONFIG REQUIRED)
 message(STATUS "boost: ${Boost_VERSION}")
 
+find_package(absl REQUIRED)
+
 if (ENABLE_TESTS)
   find_package(GTest REQUIRED)
   message(STATUS "GTest: ${GTest_VERSION}")
@@ -175,6 +177,7 @@ add_compile_options(
   -ffp-contract=off
   # Apple clang 14.0.0 deprecates sprintf, which generates 900 warnings.
   $<$<CXX_COMPILER_ID:AppleClang>:-Wno-deprecated-declarations>
+  $<$<CXX_COMPILER_ID:AppleClang>:-Wmismatched-tags>
   $<$<BOOL:${ASAN}>:-fsanitize=address>
   $<$<BOOL:${ASAN}>:-fno-omit-frame-pointer>
   $<$<BOOL:${ASAN}>:-g>
@@ -257,11 +260,13 @@ if (NOT USE_SYSTEM_OPENSTA)
 endif()
 add_subdirectory(dbSta)
 add_subdirectory(rsz)
+add_subdirectory(tst)
 add_subdirectory(stt)
 add_subdirectory(gpl)
 add_subdirectory(dpl)
 add_subdirectory(exa)
 add_subdirectory(fin)
+add_subdirectory(ram)
 add_subdirectory(ppl)
 add_subdirectory(rmp)
 add_subdirectory(cgt)
@@ -310,7 +315,7 @@ set_target_properties(openroad PROPERTIES
   # Export symbols for stack trace printing
   ENABLE_EXPORTS ON
 )
-target_compile_features(openroad PUBLIC cxx_std_17)
+target_compile_features(openroad PUBLIC cxx_std_20)
 
 target_include_directories(openroad
   PUBLIC
@@ -325,6 +330,7 @@ target_link_libraries(openroad
   dpl
   exa
   fin
+  ram
   rsz
   ppl
   stt
@@ -351,6 +357,7 @@ target_link_libraries(openroad
   mpl
   par
   est
+  absl::synchronization
   ${ABC_LIBRARY}
   ${TCL_LIBRARY}
   ${CMAKE_THREAD_LIBS_INIT}
@@ -421,6 +428,7 @@ if (Python3_FOUND AND BUILD_PYTHON)
     cts_py
     drt_py
     fin_py
+#    ram_py
     rcx_py
     rmp_py
     stt_py

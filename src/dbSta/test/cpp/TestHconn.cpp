@@ -1,17 +1,12 @@
-// Copyright 2023 Google LLC
-//
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file or at
-// https://developers.google.com/open-source/licenses/bsd
+// SPDX-License-Identifier: BSD-3-Clause
+// Copyright (c) 2023-2025, The OpenROAD Authors
 
-#include <tcl.h>
 #include <unistd.h>
 
 #include <cstddef>
 #include <cstdio>
 #include <filesystem>
 #include <memory>
-#include <mutex>
 #include <sstream>
 #include <string>
 
@@ -22,28 +17,26 @@
 #include "odb/db.h"
 #include "odb/dbSet.h"
 #include "odb/lefin.h"
-#include "sta/Corner.hh"
 #include "sta/FuncExpr.hh"
-#include "sta/Graph.hh"
 #include "sta/Liberty.hh"
 #include "sta/NetworkClass.hh"
-#include "sta/PathAnalysisPt.hh"
 #include "sta/Search.hh"
 #include "sta/Sta.hh"
-#include "sta/Units.hh"
+#include "tst/fixture.h"
 #include "utl/Logger.h"
 #include "utl/deleter.h"
 
 namespace odb {
 
-std::once_flag init_sta_flag;
+static const std::string prefix("_main/src/dbSta/test/");
+static constexpr bool kDebugMsgs = false;
 
 /*
   Extract the hierarchical information in human readable format.
   Shows the dbNet and dbModNet view of the database.
 */
 
-void DbStrDebugHierarchy(dbBlock* block, std::stringstream& str_db)
+static void DbStrDebugHierarchy(dbBlock* block, std::stringstream& str_db)
 {
   str_db << fmt::format("Debug: Data base tables for block at {}:\n",
                         block->getName());
@@ -211,36 +204,19 @@ void DbStrDebugHierarchy(dbBlock* block, std::stringstream& str_db)
    o0,01,o2,o3}
 */
 
-class TestHconn : public ::testing::Test
+class TestHconn : public ::tst::Fixture
 {
  protected:
   void SetUp() override
   {
     // this will be so much easier with read_def
-    db_ = utl::UniquePtrWithDeleter<odb::dbDatabase>(odb::dbDatabase::create(),
-                                                     &odb::dbDatabase::destroy);
-    std::call_once(init_sta_flag, []() { sta::initSta(); });
-    sta_
-        = std::make_unique<sta::dbSta>(Tcl_CreateInterp(), db_.get(), &logger_);
-    auto path = std::filesystem::canonical("./Nangate45/Nangate45_typ.lib");
-    library_ = sta_->readLiberty(path.string().c_str(),
-                                 sta_->findCorner("default"),
-                                 sta::MinMaxAll::all(),
-                                 /*infer_latches=*/false);
-    odb::lefin lef_parser(
-        db_.get(), &logger_, /*ignore_non_routing_layers*/ false);
-    const char* lib_name = "Nangate45.lef";
-    lib_ = lef_parser.createTechAndLib(
-        "tech", lib_name, "./Nangate45/Nangate45.lef");
+    library_ = readLiberty(prefix + "Nangate45/Nangate45_typ.lib");
+    lib_ = loadTechAndLib(
+        "tech", "Nangate45", prefix + "Nangate45/Nangate45.lef");
 
-    sta_->postReadLef(/*tech=*/nullptr, lib_);
-
-    sta::Units* units = library_->units();
-    power_unit_ = units->powerUnit();
     db_network_ = sta_->getDbNetwork();
     // turn on hierarchy
     db_network_->setHierarchy();
-    db_->setLogger(&logger_);
 
     // create a chain consisting of 4 buffers
     odb::dbChip* chip = odb::dbChip::create(db_.get(), db_->getTech());
@@ -547,9 +523,11 @@ class TestHconn : public ::testing::Test
     inv4_3_op_->connect(op2_net_);
     inv4_4_op_->connect(op3_net_);
 
-    // std::stringstream str_str;
-    //    DbStrDebugHierarchy(block_, str_str);
-    //    printf("The Flat design created %s\n", str_str.str().c_str());
+    if (kDebugMsgs) {
+      std::stringstream str_str;
+      DbStrDebugHierarchy(block_, str_str);
+      printf("The Flat design created %s\n", str_str.str().c_str());
+    }
 
     // Now build the hierarchical "overlay"
     // What we are doing here is adding the modnets which hook up
@@ -665,19 +643,16 @@ class TestHconn : public ::testing::Test
     inv4_mod_level2_inst_o3_miterm_->connect(inv4_mod_level2_inst_o3_mnet_);
     inv4_mod_level1_master_o3_port_->connect(inv4_mod_level2_inst_o3_mnet_);
 
-    // Uncomment this to see the full design
-    //    std::stringstream full_design;
-    //    DbStrDebugHierarchy(block_, full_design);
-    //    printf("The  design created (flat and hierarchical) %s\n",
-    //	   full_design.str().c_str());
+    if (kDebugMsgs) {
+      std::stringstream full_design;
+      DbStrDebugHierarchy(block_, full_design);
+      printf("The  design created (flat and hierarchical) %s\n",
+             full_design.str().c_str());
+    }
   }
 
-  utl::UniquePtrWithDeleter<odb::dbDatabase> db_;
-  sta::Unit* power_unit_;
-  std::unique_ptr<sta::dbSta> sta_;
   sta::LibertyLibrary* library_;
 
-  utl::Logger logger_;
   sta::dbNetwork* db_network_;
 
   dbBlock* block_;
@@ -812,9 +787,11 @@ class TestHconn : public ::testing::Test
 
 TEST_F(TestHconn, ConnectionMade)
 {
-  //  std::stringstream str_str_initial;
-  //  DbStrDebugHierarchy(block_, str_str_initial);
-  //  printf("The initial design: %s\n", str_str_initial.str().c_str());
+  if (kDebugMsgs) {
+    std::stringstream str_str_initial;
+    DbStrDebugHierarchy(block_, str_str_initial);
+    printf("The initial design: %s\n", str_str_initial.str().c_str());
+  }
 
   // ECO test: get initial state before we start modifying
   // the design. Then at end we undo everything and
@@ -920,10 +897,11 @@ TEST_F(TestHconn, ConnectionMade)
   db_network_->hierarchicalConnect(
       inv1_2_inst_op0, inv4_4_ip_, hier_net_name.c_str());
 
-  // Uncomment this to see the final design
-  //  std::stringstream str_str_final;
-  //  DbStrDebugHierarchy(block_, str_str_final);
-  //  printf("The final design: %s\n", str_str_final.str().c_str());
+  if (kDebugMsgs) {
+    std::stringstream str_str_final;
+    DbStrDebugHierarchy(block_, str_str_final);
+    printf("The final design: %s\n", str_str_final.str().c_str());
+  }
 
   // Example of how to turn on the call backs for all the bterms/iterms
   // used by the sta
@@ -969,7 +947,6 @@ TEST_F(TestHconn, ConnectionMade)
   // Journalling test.
   // Undo everything and check initial state preserved
   //
-  odb::dbDatabase::endEco(block_);
   odb::dbDatabase::undoEco(block_);
 
   size_t restored_db_net_count = block_->getNets().size();

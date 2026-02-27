@@ -39,6 +39,8 @@ proc configure_cts_characterization { args } {
 sta::define_cmd_args "set_cts_config" {[-apply_ndr strategy] \
                                        [-branching_point_buffers_distance] \
 				       [-buf_list] \
+                                       [-clock_buffer_footprint footprint] \
+                                       [-clock_buffer_string string] \
                                        [-clustering_exponent] \
                                        [-clustering_unbalance_ratio] \
                                        [-delay_buffer_derate] \
@@ -52,16 +54,19 @@ sta::define_cmd_args "set_cts_config" {[-apply_ndr strategy] \
                                        [-sink_clustering_levels levels] \
                                        [-sink_clustering_max_diameter] \
                                        [-sink_clustering_size] \
+				       [-skip_nets] \
                                        [-tree_buf buf] \
 	                               [-wire_unit unit]
 }
 proc set_cts_config { args } {
   sta::parse_key_args "set_cts_config" args \
-    keys {-apply_ndr -branching_point_buffers_distance -buf_list -clustering_exponent \
+    keys {-apply_ndr -branching_point_buffers_distance -buf_list \
+           -clock_buffer_footprint -clock_buffer_string \
+           -clustering_exponent \
            -clustering_unbalance_ratio -delay_buffer_derate -distance_between_buffers \
            -library -macro_clustering_max_diameter -macro_clustering_size \
-           -num_static_layers -sink_buffer_max_cap_derate -sink_clustering_levels -root_buf\
-           -sink_clustering_max_diameter -sink_clustering_size -tree_buf -wire_unit} \
+           -num_static_layers -sink_buffer_max_cap_derate -sink_clustering_levels -root_buf \
+           -sink_clustering_max_diameter -sink_clustering_size -skip_nets -tree_buf -wire_unit} \
     flags {}
 
   sta::check_argc_eq0 "set_cts_config" $args
@@ -69,6 +74,25 @@ proc set_cts_config { args } {
   if { [info exists keys(-apply_ndr)] } {
     set strategy $keys(-apply_ndr)
     cts::set_apply_ndr $strategy
+  }
+  if { [info exists keys(-clock_buffer_string)] && [info exists keys(-clock_buffer_footprint)] } {
+    utl::error CTS 135 "-clock_buffer_string and -clock_buffer_footprint are mutually exclusive."
+  } elseif { [info exists keys(-clock_buffer_string)] } {
+    if { ![rsz::has_clock_buffer_footprint_cmd] } {
+      set clk_str $keys(-clock_buffer_string)
+      rsz::set_clock_buffer_string_cmd $clk_str
+    } else {
+      utl::error CTS 133 "-clock_buffer_string cannot be set because\
+        -clock_buffer_footprint is already defined."
+    }
+  } elseif { [info exists keys(-clock_buffer_footprint)] } {
+    if { ![rsz::has_clock_buffer_string_cmd] } {
+      set footprint $keys(-clock_buffer_footprint)
+      rsz::set_clock_buffer_footprint_cmd $footprint
+    } else {
+      utl::error CTS 134 "-clock_buffer_footprint cannot be set because\
+        -clock_buffer_string is already defined."
+    }
   }
   if { [info exists keys(-branching_point_buffers_distance)] } {
     set distance $keys(-branching_point_buffers_distance)
@@ -136,6 +160,12 @@ proc set_cts_config { args } {
     set size $keys(-sink_clustering_size)
     cts::set_sink_clustering_size $size
   }
+  if { [info exists keys(-skip_nets)] } {
+    foreach net [get_nets $keys(-skip_nets)] {
+      set db_net [sta::sta_to_db_net $net]
+      cts::set_skip_clock_nets $db_net
+    }
+  }
   if { [info exists keys(-tree_buf)] } {
     set buf $keys(-tree_buf)
     cts::set_tree_buf $buf
@@ -186,6 +216,10 @@ proc report_cts_config { args } {
   set sink_clustering_levels [cts::get_sink_clustering_levels]
   set sink_max_diameter [cts::get_sink_clustering_max_diameter]
   set sink_cluster_size [cts::get_sink_clustering_size]
+  set skip_nets_list [cts::get_skip_nets]
+  if { $skip_nets_list eq "" } {
+    set skip_nets_list "undefined"
+  }
   set tree_buffer [cts::get_tree_buf]
   if { $tree_buffer eq "" } {
     set tree_buffer "undefined"
@@ -193,10 +227,20 @@ proc report_cts_config { args } {
   set wire_segment_unit [cts::get_wire_unit]
   # reset the db units
   cts::set_db_unit 1
-  puts "*******************************************"
+  set clock_buffer_string "unset"
+  if { [rsz::has_clock_buffer_string_cmd] } {
+    set clock_buffer_string [rsz::get_clock_buffer_string_cmd]
+  }
+  set clock_buffer_footprint "unset"
+  if { [rsz::has_clock_buffer_footprint_cmd] } {
+    set clock_buffer_footprint [rsz::get_clock_buffer_footprint_cmd]
+  }
+  puts "*****************************************************"
   puts "CTS config:"
   puts "-apply_ndr:                          $ndr_strategy"
   puts "-buf_list:                           $buffer_list"
+  puts "-clock_buffer_footprint:             $clock_buffer_footprint"
+  puts "-clock_buffer_string:                $clock_buffer_string"
   puts "-branching_point_buffers_distance:   $vertex_buffer_distance"
   puts "-clustering_exponent:                $clustering_power"
   puts "-clustering_unbalance_ratio:         $clustering_capacity"
@@ -211,14 +255,17 @@ proc report_cts_config { args } {
   puts "-sink_clustering_levels:             $sink_clustering_levels"
   puts "-sink_clustering_max_diameter:       $sink_max_diameter"
   puts "-sink_clustering_size:               $sink_cluster_size"
+  puts "-skip_nets:                          $skip_nets_list"
   puts "-tree_buf:                           $tree_buffer"
   puts "-wire_unit:                          $wire_segment_unit"
-  puts "****'***************************************"
+  puts "*****************************************************"
 }
 
 sta::define_cmd_args "reset_cts_config" {[-apply_ndr] \
                                          [-branching_point_buffers_distance] \
 					 [-buf_list] \
+                                         [-clock_buffer_footprint] \
+                                         [-clock_buffer_string] \
                                          [-clustering_exponent] \
                                          [-clustering_unbalance_ratio] \
                                          [-delay_buffer_derate] \
@@ -232,17 +279,20 @@ sta::define_cmd_args "reset_cts_config" {[-apply_ndr] \
                                          [-sink_clustering_levels] \
                                          [-sink_clustering_max_diameter] \
                                          [-sink_clustering_size] \
+					 [-skip_nets] \
                                          [-tree_buf] \
 	                                 [-wire_unit]}
 
 proc reset_cts_config { args } {
   sta::parse_key_args "reset_cts_config" args \
     keys {} \
-    flags {-apply_ndr -buf_list -branching_point_buffers_distance -clustering_exponent \
+    flags {-apply_ndr -buf_list -branching_point_buffers_distance \
+           -clock_buffer_footprint -clock_buffer_string \
+           -clustering_exponent \
            -clustering_unbalance_ratio -delay_buffer_derate -distance_between_buffers \
            -library -macro_clustering_max_diameter -macro_clustering_size \
            -num_static_layers -root_buf -sink_buffer_max_cap_derate -sink_clustering_levels \
-           -sink_clustering_max_diameter -sink_clustering_size -tree_buf -wire_unit}
+           -sink_clustering_max_diameter -sink_clustering_size -skip_nets -tree_buf -wire_unit}
 
   set reset_all [expr { [array size flags] == 0 }]
 
@@ -257,6 +307,12 @@ proc reset_cts_config { args } {
   if { $reset_all || [info exists flags(-buf_list)] } {
     cts::reset_buffer_list
     utl::info CTS 213 "Buffer list has been removed."
+  }
+  if {
+    $reset_all || [info exists flags(-clock_buffer_string)]
+    || [info exists flags(-clock_buffer_footprint)]
+  } {
+    rsz::reset_clock_buffer_pattern_cmd
   }
   if { $reset_all || [info exists flags(-clustering_exponent)] } {
     cts::reset_clustering_exponent
@@ -310,13 +366,17 @@ proc reset_cts_config { args } {
     cts::reset_sink_clustering_size
     utl::info CTS 226 "Sink clustering size has been removed."
   }
+  if { $reset_all || [info exists flags(-skip_nets)] } {
+    cts::reset_skip_nets
+    utl::info CTS 227 "Skip nets has been removed."
+  }
   if { $reset_all || [info exists flags(-tree_buf)] } {
     cts::reset_tree_buf
-    utl::info CTS 227 "Tree buffer has been removed."
+    utl::info CTS 228 "Tree buffer has been removed."
   }
   if { $reset_all || [info exists flags(-wire_unit)] } {
     cts::reset_wire_segment_distance_unit
-    utl::info CTS 228 "Wire segment unit has been removed."
+    utl::info CTS 229 "Wire segment unit has been removed."
   }
 }
 
@@ -397,8 +457,9 @@ proc clock_tree_synthesis { args } {
     set distance $keys(-macro_clustering_max_diameter)
     cts::set_macro_clustering_diameter $distance
   }
-
-  cts::set_balance_levels [info exists flags(-balance_levels)]
+  if { [info exists flags(-balance_levels)] } {
+    utl::warn CTS 132 "-balance_levels is obsolete."
+  }
 
   if { [info exists keys(-sink_clustering_levels)] } {
     set levels $keys(-sink_clustering_levels)

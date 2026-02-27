@@ -9,18 +9,17 @@
 #include <string>
 #include <vector>
 
-#include "db_sta/dbNetwork.hh"
 #include "db_sta/dbSta.hh"
+#include "debug_gui.h"
 #include "dpl/Opendp.h"
 #include "heatMap.h"
 #include "ir_network.h"
 #include "ir_solver.h"
+#include "node.h"
 #include "odb/db.h"
 #include "odb/dbShape.h"
 #include "odb/dbTypes.h"
 #include "shape.h"
-#include "sta/Corner.hh"
-#include "sta/DcalcAnalysisPt.hh"
 #include "sta/Liberty.hh"
 #include "utl/Logger.h"
 
@@ -63,20 +62,20 @@ void PDNSim::setDebugGui(bool enable)
       new ConnectionDescriptor(solvers_));
 }
 
-void PDNSim::setNetVoltage(odb::dbNet* net, sta::Corner* corner, double voltage)
+void PDNSim::setNetVoltage(odb::dbNet* net, sta::Scene* corner, double voltage)
 {
   auto& voltages = user_voltages_[net];
   voltages[corner] = voltage;
 }
 
-void PDNSim::setInstPower(odb::dbInst* inst, sta::Corner* corner, float power)
+void PDNSim::setInstPower(odb::dbInst* inst, sta::Scene* corner, float power)
 {
   auto& powers = user_powers_[inst];
   powers[corner] = power;
 }
 
 void PDNSim::analyzePowerGrid(odb::dbNet* net,
-                              sta::Corner* corner,
+                              sta::Scene* corner,
                               GeneratedSourceType source_type,
                               const std::string& voltage_file,
                               bool use_prev_solution,
@@ -138,7 +137,7 @@ bool PDNSim::checkConnectivity(odb::dbNet* net,
 }
 
 void PDNSim::writeSpiceNetwork(odb::dbNet* net,
-                               sta::Corner* corner,
+                               sta::Scene* corner,
                                GeneratedSourceType source_type,
                                const std::string& spice_file,
                                const std::string& voltage_source_file)
@@ -177,7 +176,7 @@ void PDNSim::getIRDropForLayer(odb::dbNet* net,
 }
 
 void PDNSim::getIRDropForLayer(odb::dbNet* net,
-                               sta::Corner* corner,
+                               sta::Scene* corner,
                                odb::dbTechLayer* layer,
                                IRDropByPoint& ir_drop) const
 {
@@ -204,6 +203,9 @@ void PDNSim::setGeneratedSourceSettings(const GeneratedSourceSettings& settings)
   }
   if (settings.strap_track_pitch > 0) {
     generated_source_settings_.strap_track_pitch = settings.strap_track_pitch;
+  }
+  if (settings.resistance > 0) {
+    generated_source_settings_.resistance = settings.resistance;
   }
 }
 
@@ -232,6 +234,21 @@ void PDNSim::inDbBTermPostDisConnect(odb::dbBTerm*, odb::dbNet*)
   clearSolvers();
 }
 
+void PDNSim::inDbBPinCreate(odb::dbBPin*)
+{
+  clearSolvers();
+}
+
+void PDNSim::inDbBPinAddBox(odb::dbBox*)
+{
+  clearSolvers();
+}
+
+void PDNSim::inDbBPinRemoveBox(odb::dbBox*)
+{
+  clearSolvers();
+}
+
 void PDNSim::inDbBPinDestroy(odb::dbBPin*)
 {
   clearSolvers();
@@ -253,7 +270,7 @@ void PDNSim::inDbSWirePostDestroySBoxes(odb::dbSWire*)
 }
 
 // Functions of decap cells
-void PDNSim::addDecapMaster(dbMaster* decap_master, double decap_cap)
+void PDNSim::addDecapMaster(odb::dbMaster* decap_master, double decap_cap)
 {
   opendp_->addDecapMaster(decap_master, decap_cap);
 }

@@ -13,7 +13,9 @@
 #include "boost/polygon/polygon.hpp"
 #include "db/obj/frAccess.h"
 #include "db/obj/frFig.h"
+#include "db/obj/frRPin.h"
 #include "db/obj/frVia.h"
+#include "db/tech/frConstraint.h"
 #include "frBaseTypes.h"
 #include "frProfileTask.h"
 #include "global.h"
@@ -21,6 +23,8 @@
 #include "odb/dbTransform.h"
 #include "odb/dbTypes.h"
 #include "utl/Logger.h"
+
+using odb::dbTechLayerType;
 
 namespace drt {
 
@@ -139,9 +143,9 @@ void io::Parser::initDefaultVias()
       bool isLayer1EncHorz = layer1Box.dx() > layer1Box.dy();
       bool isLayer2EncHorz = layer2Box.dx() > layer2Box.dy();
       bool isLayer1Horz = (getTech()->getLayer(layer1Num)->getDir()
-                           == dbTechLayerDir::HORIZONTAL);
+                           == odb::dbTechLayerDir::HORIZONTAL);
       bool isLayer2Horz = (getTech()->getLayer(layer2Num)->getDir()
-                           == dbTechLayerDir::HORIZONTAL);
+                           == odb::dbTechLayerDir::HORIZONTAL);
       bool needViaGen = false;
       if ((!isLayer1Square && (isLayer1EncHorz != isLayer1Horz))
           || (!isLayer2Square && (isLayer2EncHorz != isLayer2Horz))) {
@@ -507,10 +511,10 @@ void io::Parser::getViaRawPriority(const frViaDef* viaDef,
   isNotLowerAlign
       = (isLayer1Horz
          && (getTech()->getLayer(viaDef->getLayer1Num())->getDir()
-             == dbTechLayerDir::VERTICAL))
+             == odb::dbTechLayerDir::VERTICAL))
         || (!isLayer1Horz
             && (getTech()->getLayer(viaDef->getLayer1Num())->getDir()
-                == dbTechLayerDir::HORIZONTAL));
+                == odb::dbTechLayerDir::HORIZONTAL));
 
   PolygonSet viaLayerPS2;
   for (auto& fig : viaDef->getLayer2Figs()) {
@@ -527,10 +531,10 @@ void io::Parser::getViaRawPriority(const frViaDef* viaDef,
   isNotUpperAlign
       = (isLayer2Horz
          && (getTech()->getLayer(viaDef->getLayer2Num())->getDir()
-             == dbTechLayerDir::VERTICAL))
+             == odb::dbTechLayerDir::VERTICAL))
         || (!isLayer2Horz
             && (getTech()->getLayer(viaDef->getLayer2Num())->getDir()
-                == dbTechLayerDir::HORIZONTAL));
+                == odb::dbTechLayerDir::HORIZONTAL));
 
   frCoord layer1Area = area(viaLayerPS1);
   frCoord layer2Area = area(viaLayerPS2);
@@ -740,9 +744,7 @@ inline void getTrackLocs(bool isHorzTracks,
   for (auto& tp : block->getTrackPatterns(layer->getLayerNum())) {
     if (tp->isHorizontal() != isHorzTracks) {
       int trackNum = (low - tp->getStartCoord()) / (int) tp->getTrackSpacing();
-      if (trackNum < 0) {
-        trackNum = 0;
-      }
+      trackNum = std::max(trackNum, 0);
       if (trackNum * (int) tp->getTrackSpacing() + tp->getStartCoord() < low) {
         ++trackNum;
       }
@@ -974,9 +976,9 @@ void io::Parser::initRPin_rpin()
 
         // MACRO does not go through PA
         if (prefAp == nullptr) {
-          dbMasterType masterType = inst->getMaster()->getMasterType();
+          odb::dbMasterType masterType = inst->getMaster()->getMasterType();
           if (masterType.isBlock() || masterType.isPad()
-              || masterType == dbMasterType::RING) {
+              || masterType == odb::dbMasterType::RING) {
             prefAp = (pin->getPinAccess(inst->getPinAccessIdx())
                           ->getAccessPoints())[0]
                          .get();

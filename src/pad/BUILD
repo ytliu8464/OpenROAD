@@ -15,6 +15,8 @@ cc_library(
     srcs = [
         "src/ICeWall.cpp",
         "src/MakeICeWall.cpp",
+        "src/PadPlacer.cpp",
+        "src/PadPlacer.h",
         "src/RDLGui.cpp",
         "src/RDLGui.h",
         "src/RDLRoute.cpp",
@@ -43,7 +45,7 @@ cc_library(
         "@boost.icl",
         "@boost.polygon",
         "@boost.stacktrace",
-        "@tk_tcl//:tcl",
+        "@tcl_lang//:tcl",
     ],
 )
 

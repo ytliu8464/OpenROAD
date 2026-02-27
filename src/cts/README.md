@@ -138,6 +138,8 @@ set_cts_config
     [-apply_ndr strategy]
     [-buf_list <list_of_buffers>]
     [-branching_point_buffers_distance distance]
+    [-clock_buffer_footprint string]
+    [-clock_buffer_string string]
     [-clustering_exponent power]
     [-clustering_unbalance_ratio capacity]
     [-delay_buffer_derate derate_value]
@@ -151,6 +153,7 @@ set_cts_config
     [-sink_clustering_levels levels]
     [-sink_clustering_max_diameter max_diameter]
     [-sink_clustering_size cluster_size]
+    [-skip_nets <list_of_clk_nets_to_skip>]
     [-tree_buf <buf>]
     [-wire_unit wire_unit]
 ```
@@ -162,6 +165,8 @@ set_cts_config
 | `-apply_ndr` | Applies 2X spacing non-default rule to clock nets except leaf-level nets following some strategy. There are four strategy options: `none, root_only, half, full`. If this is not specified, the default value is `none`. |
 | `-buf_list` | Tcl list of master cells (buffers) that will be considered when making the wire segments (e.g. `{BUFXX, BUFYY}`). |
 | `-branching_point_buffers_distance` | Distance (in microns) that a branch has to have in order for a buffer to be inserted on a branch end-point. This requires the `-distance_between_buffers` value to be set. |
+| `-clock_buffer_footprint` | sub-string that identifies clock buffers by liberty cell_footprint attribute. This option is mutually exclusive with -clock_buffer_string. |
+| `-clock_buffer_string` | sub-string that identifies clock buffers by name.  The default is CLKBUF.  This option is mutally exclusive with -clock_buffer_footprint. |
 | `-clustering_exponent` | Value that determines the power used on the difference between sink and means on the CKMeans clustering algorithm. The default value is `4`, and the allowed values are integers `[0, MAX_INT]`. |
 | `-clustering_unbalance_ratio` | Value determines each cluster's maximum capacity during CKMeans. A value of `0.5` (i.e., 50%) means that each cluster will have exactly half of all sinks for a specific region (half for each branch). The default value is `0.6`, and the allowed values are floats `[0, 1.0]`. |
 | `-delay_buffer_derate` | This option balances latencies between macro cells and registers by inserting delay buffers.  The default value is `1.0`, meaning all needed delay buffers are inserted.  A value of 0.5 means only half of necessary delay buffers are inserted.  A value of 0.0 means no insertion of delay buffers. |
@@ -176,6 +181,7 @@ set_cts_config
 | `-sink_clustering_max_diameter` | Specifies maximum diameter (in microns) of sink cluster for the register tree. The allowed values are integers `[0, MAX_INT]`. If this is not specified the diameter will be automatically chosen between `50, 100 or 200`, based on the tree buffer max cap. |
 | `-sink_clustering_size` | Specifies the maximum number of sinks per cluster for the register tree. The allowed values are integers `[0, MAX_INT]`. If this is not specified the size will be automatically chosen between `10, 20 or 30` based on the tree buffer max cap. |
 | `-sink_clustering_levels` | ... |
+| `-skip_nets` | Tcl list containing the clock nets to be skipped (e.g. `{net1, net2}`). If the net is a root clock net, the whole clock is skipped, otherwise only the subnet specified is skipped. |
 | `-wire_unit` | Minimum unit distance between buffers for a specific wire. If this parameter is omitted, the code gets the value from ten times the height of `-root_buffer`. |
 
 ### Report CTS configuration
@@ -195,6 +201,8 @@ reset_cts_config
     [-apply_ndr]
     [-buf_list]
     [-branching_point_buffers_distance]
+    [-clock_buffer_footprint]
+    [-clock_buffer_string]
     [-clustering_exponent]
     [-clustering_unbalance_ratio]
     [-delay_buffer_derate]
@@ -208,6 +216,7 @@ reset_cts_config
     [-sink_clustering_levels]
     [-sink_clustering_max_diameter]
     [-sink_clustering_size]
+    [-skip_nets]
     [-tree_buf]
     [-wire_unit]
 ```

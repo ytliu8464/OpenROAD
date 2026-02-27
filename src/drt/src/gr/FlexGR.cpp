@@ -3,9 +3,8 @@
 
 #include "gr/FlexGR.h"
 
-#include <omp.h>
-
 #include <algorithm>
+#include <climits>
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>
@@ -26,14 +25,20 @@
 #include "db/obj/frBlockObject.h"
 #include "db/obj/frGuide.h"
 #include "db/obj/frInst.h"
+#include "db/obj/frRPin.h"
 #include "frBaseTypes.h"
+#include "gr/FlexGRCMap.h"
 #include "odb/db.h"
+#include "odb/dbTypes.h"
 #include "odb/geom.h"
+#include "omp.h"
+#include "utl/Logger.h"
 #include "utl/exception.h"
 
-namespace drt {
-
+using odb::dbTechLayerDir;
 using utl::ThreadException;
+
+namespace drt {
 
 void FlexGR::main(odb::dbDatabase* db)
 {
@@ -191,7 +196,7 @@ void FlexGR::searchRepairMacro(int iter,
   std::vector<frInst*> macros;
 
   for (auto& inst : getDesign()->getTopBlock()->getInsts()) {
-    if (inst->getMaster()->getMasterType() == dbMasterType::BLOCK) {
+    if (inst->getMaster()->getMasterType() == odb::dbMasterType::BLOCK) {
       odb::Rect macroBBox = inst->getBBox();
       odb::Point macroCenter((macroBBox.xMin() + macroBBox.xMax()) / 2,
                              (macroBBox.yMin() + macroBBox.yMax()) / 2);
@@ -1580,7 +1585,7 @@ void FlexGR::initGR_genTopology_net(frNet* net)
                           ->getTerm()
                           ->getDirection();
         // for instTerm, direction OUTPUT is driver
-        if (ioType == dbIoType::OUTPUT && nodes[0] == nullptr) {
+        if (ioType == odb::dbIoType::OUTPUT && nodes[0] == nullptr) {
           nodes[0] = node.get();
         } else {
           if (sinkIdx >= nodes.size()) {
@@ -1594,7 +1599,7 @@ void FlexGR::initGR_genTopology_net(frNet* net)
                  || node->getPin()->typeId() == frcMTerm) {
         auto ioType = static_cast<frTerm*>(node->getPin())->getDirection();
         // for IO term, direction INPUT is driver
-        if (ioType == dbIoType::INPUT && nodes[0] == nullptr) {
+        if (ioType == odb::dbIoType::INPUT && nodes[0] == nullptr) {
           nodes[0] = node.get();
         } else {
           if (sinkIdx >= nodes.size()) {
@@ -2126,12 +2131,8 @@ void FlexGR::layerAssign_node_compute(
         int childNodeIdx
             = distance(net->getFirstNonRPinNode()->getIter(), child->getIter());
         int childLayerNum = currComb % cmap_->getNumLayers();
-        if (downstreamMinLayerNum > childLayerNum) {
-          downstreamMinLayerNum = childLayerNum;
-        }
-        if (downstreamMaxLayerNum < childLayerNum) {
-          downstreamMaxLayerNum = childLayerNum;
-        }
+        downstreamMinLayerNum = std::min(downstreamMinLayerNum, childLayerNum);
+        downstreamMaxLayerNum = std::max(downstreamMaxLayerNum, childLayerNum);
         currComb /= cmap_->getNumLayers();
 
         // add downstream cost
