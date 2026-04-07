@@ -92,8 +92,8 @@ void FFGraphExtractor::extractGraph(const std::string& output_file)
     return;
   }
 
-  // Write CSV header (including location info)
-  out << "from_ff,to_ff,slack_ns,arrival_ns,required_ns,from_x,from_y,to_x,to_y\n";
+  // Write CSV header (including both setup and hold timing + location)
+  out << "from_ff,to_ff,slack_max_ns,slack_min_ns,arrival_max_ns,arrival_min_ns,required_max_ns,required_min_ns,from_x,from_y,to_x,to_y\n";
 
   int path_count = 0;
   int vertex_count = 0;
@@ -122,19 +122,32 @@ void FFGraphExtractor::extractGraph(const std::string& output_file)
       continue;
     }
 
-    // Get worst slack path to this endpoint
-    sta::Path* path = sta_->vertexWorstSlackPath(vertex, sta::MinMax::max());
-    if (!path) {
+    // Get worst slack path for SETUP (max/late path)
+    sta::Path* path_max = sta_->vertexWorstSlackPath(vertex, sta::MinMax::max());
+    if (!path_max) {
       continue;
     }
 
-    // Get timing values
-    sta::Slack slack = path->slack(sta_);
-    sta::Arrival arrival = path->arrival();
-    sta::Required required = sta_->vertexRequired(vertex, sta::MinMax::max());
+    // Get worst slack path for HOLD (min/early path)
+    sta::Path* path_min = sta_->vertexWorstSlackPath(vertex, sta::MinMax::min());
 
-    // Get start point using path expansion
-    sta::PathExpanded expanded(path, sta_);
+    // Get SETUP timing values (max path)
+    sta::Slack slack_max = path_max->slack(sta_);
+    sta::Arrival arrival_max = path_max->arrival();
+    sta::Required required_max = sta_->vertexRequired(vertex, sta::MinMax::max());
+
+    // Get HOLD timing values (min path)
+    sta::Slack slack_min = 0.0;
+    sta::Arrival arrival_min = 0.0;
+    sta::Required required_min = 0.0;
+    if (path_min) {
+      slack_min = path_min->slack(sta_);
+      arrival_min = path_min->arrival();
+      required_min = sta_->vertexRequired(vertex, sta::MinMax::min());
+    }
+
+    // Get start point using path expansion (from max path)
+    sta::PathExpanded expanded(path_max, sta_);
     if (expanded.size() == 0) {
       continue;
     }
@@ -196,24 +209,30 @@ void FFGraphExtractor::extractGraph(const std::string& output_file)
       getInstLocation(to_it->second, to_x, to_y);
     }
 
-    // Store edge
+    // Store edge with both setup and hold timing
     FFEdge edge;
     edge.from_ff = from_ff;
     edge.to_ff = to_ff;
-    edge.slack = sta::delayAsFloat(slack);
-    edge.arrival = sta::delayAsFloat(arrival);
-    edge.required = sta::delayAsFloat(required);
+    edge.slack_max = sta::delayAsFloat(slack_max);
+    edge.arrival_max = sta::delayAsFloat(arrival_max);
+    edge.required_max = sta::delayAsFloat(required_max);
+    edge.slack_min = sta::delayAsFloat(slack_min);
+    edge.arrival_min = sta::delayAsFloat(arrival_min);
+    edge.required_min = sta::delayAsFloat(required_min);
     edge.from_x = from_x;
     edge.from_y = from_y;
     edge.to_x = to_x;
     edge.to_y = to_y;
     edges_.push_back(edge);
 
-    // Write to CSV
+    // Write to CSV (both setup and hold timing)
     out << from_ff << "," << to_ff << ","
-        << sta::delayAsFloat(slack) << ","
-        << sta::delayAsFloat(arrival) << ","
-        << sta::delayAsFloat(required) << ","
+        << sta::delayAsFloat(slack_max) << ","
+        << sta::delayAsFloat(slack_min) << ","
+        << sta::delayAsFloat(arrival_max) << ","
+        << sta::delayAsFloat(arrival_min) << ","
+        << sta::delayAsFloat(required_max) << ","
+        << sta::delayAsFloat(required_min) << ","
         << from_x << "," << from_y << ","
         << to_x << "," << to_y << "\n";
 

@@ -28,7 +28,9 @@ void HTreeBuilder::preSinkClustering(
     const std::vector<const ClockInst*>& sinkInsts,
     const float maxDiameter,
     const unsigned clusterSize,
-    const bool secondLevel)
+    const bool secondLevel,
+    const std::string& tierSuffix,
+    const std::string& tierBuffer)
 {
   bool maxDiameterSet = (type_ == TreeType::MacroTree)
                             ? options_->isMacroMaxDiameterSet()
@@ -71,6 +73,7 @@ void HTreeBuilder::preSinkClustering(
   for (int pointIdx = 0; pointIdx < numPoints; ++pointIdx) {
     const std::pair<float, float>& point = points[pointIdx];
     matching.addPoint(point.first, point.second);
+
     if (sinkInsts[pointIdx]->getInputCap() == 0) {
       // Comes here in second level since first level buf cap is not set
       matching.addCap(options_->getSinkBufferInputCap());
@@ -191,20 +194,25 @@ void HTreeBuilder::preSinkClustering(
           = (xSum / (float) pointCounter);  // geometric center of cluster
       const float normCenterY = (ySum / (float) pointCounter);
       Point<double> center((double) normCenterX, (double) normCenterY);
+      // Use tier-specific buffer if provided, otherwise use default sink buffer
+      const std::string& bufferToUse = tierBuffer.empty()
+          ? options_->getSinkBuffer() : tierBuffer;
       Point<double> legalCenter
-          = legalizeOneBuffer(center, options_->getSinkBuffer());
+          = legalizeOneBuffer(center, bufferToUse);
       commitMoveLoc(center, legalCenter);
-      const char* baseName = secondLevel ? "clkbuf_leaf2_" : "clkbuf_leaf_";
+      std::string baseName = secondLevel ? "clkbuf_leaf2_" : "clkbuf_leaf_";
+      // Use suffix for tier (e.g., clkbuf_leaf_0_t1) to maintain clkbuf_* pattern
+      std::string bufName = baseName + std::to_string(clusterCount) + tierSuffix;
       ClockInst& rootBuffer
-          = clock_.addClockBuffer(baseName + std::to_string(clusterCount),
-                                  options_->getSinkBuffer(),
+          = clock_.addClockBuffer(bufName,
+                                  bufferToUse,
                                   legalCenter.getX() * wireSegmentUnit_,
                                   legalCenter.getY() * wireSegmentUnit_);
       // clang-format off
       if (center != legalCenter) {
 	debugPrint(logger_, CTS, "legalizer", 2,
 		   "preSinkClustering legalizeOneBuffer {}: {} => {}",
-		   baseName + std::to_string(clusterCount),
+		   bufName,
 		   center, legalCenter);
       }
       // clang-format on
@@ -215,8 +223,9 @@ void HTreeBuilder::preSinkClustering(
       }
 
       baseName = secondLevel ? "clknet_leaf2_" : "clknet_leaf_";
+      std::string netName = baseName + std::to_string(clusterCount) + tierSuffix;
       ClockSubNet& clockSubNet
-          = clock_.addSubNet(baseName + std::to_string(clusterCount));
+          = clock_.addSubNet(netName);
       // Subnet that connects the new -sink- buffer to each specific sink
       clockSubNet.addInst(rootBuffer);
       for (ClockInst* clockInstObj : clusterClockInsts) {
@@ -297,7 +306,61 @@ void HTreeBuilder::initSinkRegion()
              wireSegmentUnit_);
   // clang-format on
 
-  preSinkClustering(topLevelSinks, sinkInsts, maxDiameter, clusterSize);
+  // 3D CTS: Separate clustering by tier
+  if (options_->is3dCtsEnabled()) {
+    // Split sinks by tier based on instance name (not master name)
+    std::vector<std::pair<float, float>> t1Sinks, t2Sinks;
+    std::vector<const ClockInst*> t1Insts, t2Insts;
+
+    for (size_t i = 0; i < sinkInsts.size(); ++i) {
+      // Check instance name for tier suffix (e.g., "inst_upper/CLK")
+      const std::string& instName = sinkInsts[i]->getName();
+      if (instName.find("_upper") != std::string::npos) {
+        t2Sinks.push_back(topLevelSinks[i]);
+        t2Insts.push_back(sinkInsts[i]);
+      } else {
+        // Default to T1 (bottom) for "_bottom" suffix or unknown
+        t1Sinks.push_back(topLevelSinks[i]);
+        t1Insts.push_back(sinkInsts[i]);
+      }
+    }
+
+    logger_->info(CTS, 302, "3D CTS: {} T1 (bottom) sinks, {} T2 (upper) sinks.",
+                  t1Sinks.size(), t2Sinks.size());
+
+    // Cluster T1 sinks with "_t1" suffix and bottom tier buffer
+    if (!t1Sinks.empty()) {
+      debugPrint(logger_, CTS, "clustering", 1, "Clustering T1 (bottom) sinks...");
+      preSinkClustering(t1Sinks, t1Insts, maxDiameter, clusterSize, false, "_t1",
+                        options_->getBottomTierBuffer());
+    }
+
+    // Save T1 results and clear for T2
+    std::vector<std::pair<float, float>> t1Clustered = topLevelSinksClustered_;
+    topLevelSinksClustered_.clear();
+
+    // Cluster T2 sinks with "_t2" suffix and upper tier buffer
+    if (!t2Sinks.empty()) {
+      debugPrint(logger_, CTS, "clustering", 1, "Clustering T2 (upper) sinks...");
+      preSinkClustering(t2Sinks, t2Insts, maxDiameter, clusterSize, false, "_t2",
+                        options_->getUpperTierBuffer());
+    }
+
+    // Combine T1 and T2 results
+    std::vector<std::pair<float, float>> t2Clustered = topLevelSinksClustered_;
+    topLevelSinksClustered_.clear();
+    topLevelSinksClustered_.insert(topLevelSinksClustered_.end(),
+                                    t1Clustered.begin(), t1Clustered.end());
+    topLevelSinksClustered_.insert(topLevelSinksClustered_.end(),
+                                    t2Clustered.begin(), t2Clustered.end());
+
+    logger_->info(CTS, 303, "3D CTS: {} T1 clusters + {} T2 clusters = {} total.",
+                  t1Clustered.size(), t2Clustered.size(),
+                  topLevelSinksClustered_.size());
+  } else {
+    // Original 2D clustering
+    preSinkClustering(topLevelSinks, sinkInsts, maxDiameter, clusterSize);
+  }
   if (topLevelSinks.size() <= min_clustering_sinks
       || !(options_->getSinkClustering())) {
     Box<int> sinkRegionDbu = clock_.computeSinkRegion();
@@ -1974,6 +2037,8 @@ void HTreeBuilder::createClockSubNets()
 
   LevelTopology& leafTopology = topologyForEachLevel_.back();
   unsigned numSinks = 0;
+  unsigned numHbVias = 0;
+
   leafTopology.forEachBranchingPoint(
       [&](unsigned idx, Point<double> branchPoint) {
         ClockSubNet* subNet = leafTopology.getBranchDrivingSubNet(idx);
@@ -1985,6 +2050,13 @@ void HTreeBuilder::createClockSubNets()
 
         subNet->setLeafLevel(true);
 
+        // 3D CTS: Get the driver's tier
+        ClockInst* driver = subNet->getDriver();
+        Tier driverTier = TIER_BOTTOM;  // default
+        if (driver && options_->is3dCtsEnabled()) {
+          driverTier = inferTierFromMaster(driver->getMaster());
+        }
+
         const std::vector<Point<double>>& sinkLocs
             = leafTopology.getBranchSinksLocations(idx);
         for (const Point<double>& loc : sinkLocs) {
@@ -1992,12 +2064,38 @@ void HTreeBuilder::createClockSubNets()
             logger_->error(CTS, 80, "Sink not found.");
           }
 
-          subNet->addInst(*mapLocationToSink_[loc]);
+          ClockInst* sink = mapLocationToSink_[loc];
+
+          // 3D CTS: Check for cross-tier connection
+          if (options_->is3dCtsEnabled() && options_->isHbAwareCtsEnabled()) {
+            Tier sinkTier = sink->getTier();
+            if (sinkTier == TIER_UNKNOWN) {
+              // Infer from master name if not set
+              sink->inferTierFromMaster();
+              sinkTier = sink->getTier();
+            }
+
+            if (needsCrossTierConnection(driverTier, sinkTier)) {
+              // Insert HB via before connecting to sink
+              int hbX = sink->getX();
+              int hbY = sink->getY();
+              std::string hbName = "leaf_" + std::to_string(idx) + "_" +
+                                   std::to_string(numSinks);
+              insertHybridBondIfNeeded(*subNet, hbName, hbX, hbY,
+                                        driverTier, sinkTier);
+              numHbVias++;
+            }
+          }
+
+          subNet->addInst(*sink);
           ++numSinks;
         }
       });
 
   logger_->info(CTS, 35, " Number of sinks covered: {}.", numSinks);
+  if (options_->is3dCtsEnabled() && numHbVias > 0) {
+    logger_->info(CTS, 311, " Number of HB vias inserted: {}.", numHbVias);
+  }
 }
 
 void HTreeBuilder::createSingleBufferClockNet()
@@ -2027,6 +2125,59 @@ void HTreeBuilder::createSingleBufferClockNet()
   clockSubNet.addInst(rootBuffer);
 
   clock_.forEachSink([&](ClockInst& inst) { clockSubNet.addInst(inst); });
+}
+
+// 3D CTS: Infer tier from buffer master cell name
+Tier HTreeBuilder::inferTierFromMaster(const std::string& masterName) const
+{
+  if (masterName.find("_upper") != std::string::npos) {
+    return TIER_UPPER;
+  } else if (masterName.find("_bottom") != std::string::npos) {
+    return TIER_BOTTOM;
+  }
+  // Default to bottom tier for unknown masters
+  return TIER_BOTTOM;
+}
+
+// 3D CTS: Check if connection needs to cross tiers
+bool HTreeBuilder::needsCrossTierConnection(Tier sourceTier, Tier targetTier) const
+{
+  if (!options_->is3dCtsEnabled() || !options_->isHbAwareCtsEnabled()) {
+    return false;
+  }
+  // Cross-tier if source and target are on different known tiers
+  if (sourceTier != TIER_UNKNOWN && targetTier != TIER_UNKNOWN) {
+    return sourceTier != targetTier;
+  }
+  return false;
+}
+
+// 3D CTS: Insert HB via if needed for cross-tier connection
+void HTreeBuilder::insertHybridBondIfNeeded(ClockSubNet& subNet,
+                                             const std::string& hbName,
+                                             int x, int y,
+                                             Tier sourceTier,
+                                             Tier targetTier)
+{
+  if (!needsCrossTierConnection(sourceTier, targetTier)) {
+    return;
+  }
+
+  // Insert HB via at the connection point
+  ClockInst& hbVia = clock_.addHybridBond(hbName, x, y, sourceTier, targetTier);
+
+  // Add HB delay to the subnet (will be used for timing estimation)
+  double hbDelayPs = techChar_->getHbDelayPs();
+
+  logger_->info(CTS, 318, "3D CTS: Inserting HB via '{}' at ({}, {}) "
+                "from tier {} to tier {}, delay: {:.3f} ps",
+                hbVia.getName(), x, y,
+                sourceTier == TIER_BOTTOM ? "bottom" : "upper",
+                targetTier == TIER_BOTTOM ? "bottom" : "upper",
+                hbDelayPs);
+
+  // The HB via acts as a connection element in the subnet
+  subNet.addInst(hbVia);
 }
 
 void HTreeBuilder::plotSolution()

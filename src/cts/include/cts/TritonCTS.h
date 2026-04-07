@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <map>
 #include <memory>
@@ -47,6 +48,9 @@ namespace cts {
 
 using utl::Logger;
 
+// Forward declaration for 3D CTS tier type
+enum Tier : int8_t;
+
 class ClockInst;
 class CtsOptions;
 class TechChar;
@@ -72,7 +76,10 @@ class TritonCTS
   void reportCtsMetrics();
   CtsOptions* getParms() { return options_; }
   TechChar* getCharacterization() { return techChar_.get(); }
-  odb::dbBlock* getBlock() { return db_->getChip()->getBlock(); }
+  odb::dbBlock* getBlock() {
+    if (!db_ || !db_->getChip()) return nullptr;
+    return db_->getChip()->getBlock();
+  }
   int setClockNets(const char* names);
   void setBufferList(const char* buffers);
   void setRootBuffer(const char* buffers);
@@ -82,6 +89,32 @@ class TritonCTS
 
   // FF-to-FF timing graph extraction for 3D-CTS
   void extractFFGraph(const std::string& output_file);
+
+  // FF-to-FF timing graph extraction V2 (BFS-based with min/max slack)
+  void extractFFGraphV2(const std::string& output_file);
+
+  // Verilog-based FF-to-FF extraction (pure connectivity, no timing)
+  void extractFFGraphFromVerilog(const std::string& verilog_file,
+                                  const std::string& output_file);
+
+  // JYJ (2026-03-21) openroad_260321: Dual CSV output (reg2reg + all)
+  void extractSequentialGraph(const std::string& verilog_file,
+                               const std::string& output_base);
+
+  // JYJ (2026-03-21): IO timing edges only (PI->FF, FF->PO)
+  void extractIOTimingEdges(const std::string& verilog_file,
+                             const std::string& output_file);
+
+  // JYJ (2026-03-21): ODB-based sequential graph extraction.
+  // Uses flat ODB netlist — correct for hierarchical (multi-module) designs.
+  // Outputs: <base>.reg2reg.csv + <base>.all.csv
+  void extractSequentialGraphODB(const std::string& output_base);
+
+  // Useful Skew LP Optimization (Phase 4)
+  void runUsefulSkewLP(const std::string& ff_graph_file,
+                       double clock_period,
+                       double max_delta,
+                       bool consider_hold);
 
  private:
   bool isClockCellCandidate(sta::LibertyCell* cell);
@@ -173,6 +206,8 @@ class TritonCTS
       odb::dbNet*& secondNet,
       std::string& topBufferName);
   void computeITermPosition(odb::dbITerm* term, int& x, int& y) const;
+  // 3D CTS helper: detect tier from instance name suffix
+  Tier detectTierFromInstName(const std::string& instName) const;
   void countSinksPostDbWrite(TreeBuilder* builder,
                              odb::dbNet* net,
                              unsigned& sinks_cnt,
@@ -218,6 +253,8 @@ class TritonCTS
   void setAllClocksPropagated();
   void repairClockNets();
   void balanceMacroRegisterLatencies();
+  // 3D CTS: Read HB parameters from LEF
+  void initHbParametersFromLef();
 
   sta::dbSta* openSta_ = nullptr;
   sta::dbNetwork* network_ = nullptr;

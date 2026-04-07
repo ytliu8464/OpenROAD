@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "Clock.h"
 #include "CtsOptions.h"
 #include "HTreeBuilder.h"
 #include "TechChar.h"
@@ -44,6 +45,7 @@ class SinkClustering
 
   void addPoint(double x, double y) { points_.emplace_back(x, y); }
   void addCap(float cap) { pointsCap_.emplace_back(cap); }
+
   void run(unsigned groupSize,
            float maxDiameter,
            int scaleFactor,

@@ -333,7 +333,18 @@ class HTreeBuilder : public TreeBuilder
                          const std::vector<const ClockInst*>& sinkInsts,
                          float maxDiameter,
                          unsigned clusterSize,
-                         bool secondLevel = false);
+                         bool secondLevel = false,
+                         const std::string& tierSuffix = "",
+                         const std::string& tierBuffer = "");
+
+  // 3D CTS: HB-aware helpers
+  Tier inferTierFromMaster(const std::string& masterName) const;
+  bool needsCrossTierConnection(Tier sourceTier, Tier targetTier) const;
+  void insertHybridBondIfNeeded(ClockSubNet& subNet,
+                                 const std::string& hbName,
+                                 int x, int y,
+                                 Tier sourceTier,
+                                 Tier targetTier);
   void assignSinksToBranches(
       LevelTopology& topology,
       unsigned branchPtIdx1,

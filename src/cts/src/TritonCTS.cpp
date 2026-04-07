@@ -25,9 +25,11 @@
 #include <utility>
 #include <vector>
 
+#include "BufferSizingLP.h"
 #include "Clock.h"
 #include "CtsOptions.h"
 #include "FFGraphExtractor.h"
+#include "VerilogFFExtractor.h"
 #include "HTreeBuilder.h"
 #include "LatencyBalancer.h"
 #include "TechChar.h"
@@ -90,6 +92,7 @@ void TritonCTS::runTritonCts()
   options_->addOwner(block);
 
   setupCharacterization();
+  initHbParametersFromLef();  // 3D CTS: read HB params from LEF
   findClockRoots();
   populateTritonCTS();
   if (builders_.empty()) {
@@ -1523,7 +1526,12 @@ TreeBuilder* TritonCTS::initClockTreeForMacrosAndRegs(
         int x, y;
         computeITermPosition(iterm, x, y);
         float insDelay = computeInsertionDelay(name, inst, mterm);
-        clockNet.addSink(name, x, y, iterm, getInputPinCap(iterm), insDelay);
+        // 3D CTS: detect tier from instance name if 3D CTS is enabled
+        Tier tier = TIER_UNKNOWN;
+        if (options_->is3dCtsEnabled()) {
+          tier = detectTierFromInstName(inst->getConstName());
+        }
+        clockNet.addSink(name, x, y, iterm, getInputPinCap(iterm), insDelay, tier);
       }
     }
     if (clockNet.getNumSinks() < 2) {
@@ -1641,7 +1649,12 @@ TreeBuilder* TritonCTS::addClockSinks(
     odb::dbITerm* iterm = inst->getITerm(mterm);
     computeITermPosition(iterm, x, y);
     float insDelay = computeInsertionDelay(name, inst, mterm);
-    clockNet.addSink(name, x, y, iterm, getInputPinCap(iterm), insDelay);
+    // 3D CTS: detect tier from instance name if 3D CTS is enabled
+    Tier tier = TIER_UNKNOWN;
+    if (options_->is3dCtsEnabled()) {
+      tier = detectTierFromInstName(inst->getConstName());
+    }
+    clockNet.addSink(name, x, y, iterm, getInputPinCap(iterm), insDelay, tier);
   }
   logger_->info(CTS,
                 11,
@@ -1743,6 +1756,36 @@ void TritonCTS::computeITermPosition(odb::dbITerm* term, int& x, int& y) const
     y /= numShapes;
   }
 };
+
+// 3D CTS helper: detect tier from instance name suffix (_upper or _bottom)
+Tier TritonCTS::detectTierFromInstName(const std::string& instName) const
+{
+  // Check for _upper suffix (case-insensitive)
+  const std::string upperSuffix = "_upper";
+  const std::string bottomSuffix = "_bottom";
+
+  if (instName.length() >= upperSuffix.length()) {
+    std::string suffix = instName.substr(instName.length() - upperSuffix.length());
+    // Convert to lowercase for comparison
+    std::transform(suffix.begin(), suffix.end(), suffix.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    if (suffix == upperSuffix) {
+      return TIER_UPPER;
+    }
+  }
+
+  if (instName.length() >= bottomSuffix.length()) {
+    std::string suffix = instName.substr(instName.length() - bottomSuffix.length());
+    // Convert to lowercase for comparison
+    std::transform(suffix.begin(), suffix.end(), suffix.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+    if (suffix == bottomSuffix) {
+      return TIER_BOTTOM;
+    }
+  }
+
+  return TIER_UNKNOWN;
+}
 
 void TritonCTS::destroyClockModNet(sta::Pin* pin_driver)
 {
@@ -2780,6 +2823,298 @@ void TritonCTS::extractFFGraph(const std::string& output_file)
 {
   FFGraphExtractor extractor(getBlock(), openSta_, network_, logger_);
   extractor.extractGraph(output_file);
+}
+
+void TritonCTS::extractFFGraphV2(const std::string& output_file)
+{
+  // V2 uses the same implementation as V1 with debug logging
+  FFGraphExtractor extractor(getBlock(), openSta_, network_, logger_);
+  extractor.extractGraph(output_file);
+}
+
+void TritonCTS::extractFFGraphFromVerilog(const std::string& verilog_file,
+                                          const std::string& output_file)
+{
+  logger_->report("==========================================");
+  logger_->report("Verilog-based FF-to-FF Extraction");
+  logger_->report("==========================================");
+  logger_->report("Verilog file: {}", verilog_file);
+  logger_->report("Output file:  {}", output_file);
+  logger_->report("==========================================");
+
+  VerilogFFExtractor extractor(verilog_file, getBlock(), openSta_, network_, logger_);
+
+  // Parse verilog
+  extractor.parseVerilog();
+
+  // Extract FF-to-FF edges
+  auto edges = extractor.extractFFEdges();
+
+  // Fill timing info from STA (if available)
+  extractor.fillTimingInfo(edges);
+
+  // Write to CSV
+  extractor.writeCSV(edges, output_file);
+
+  logger_->report("==========================================");
+  logger_->report("Verilog-based extraction complete!");
+  logger_->report("Output written to: {}", output_file);
+  logger_->report("==========================================");
+}
+
+// JYJ (2026-03-21) openroad_260321: Dual CSV output (reg2reg + all with IO)
+void TritonCTS::extractSequentialGraph(const std::string& verilog_file,
+                                        const std::string& output_base)
+{
+  logger_->report("==========================================");
+  logger_->report("Sequential Graph Extraction (reg2reg + IO)");
+  logger_->report("==========================================");
+  logger_->report("Verilog: {}", verilog_file);
+  logger_->report("Output base: {}", output_base);
+  logger_->report("==========================================");
+
+  VerilogFFExtractor extractor(verilog_file, getBlock(), openSta_, network_, logger_);
+
+  // Parse verilog (multi-module supported)
+  extractor.parseVerilog();
+
+  // Extract FF-to-FF edges + timing
+  auto ff_edges = extractor.extractFFEdges();
+  extractor.fillTimingInfo(ff_edges);
+
+  // Write reg2reg CSV
+  std::string reg2reg_file = output_base + ".reg2reg.csv";
+  extractor.writeCSV(ff_edges, reg2reg_file);
+
+  // Extract IO edges (PI->FF, FF->PO) + write
+  auto io_edges = extractor.extractIOEdges();
+  std::string io_file = output_base + ".io.csv";
+  extractor.writeIOCSV(io_edges, io_file);
+
+  // Write combined all.csv: reg2reg header + data, then IO section
+  std::string all_file = output_base + ".all.csv";
+  {
+    std::ofstream file(all_file);
+    if (!file.is_open()) {
+      logger_->warn(utl::CTS, 610, "Cannot open all CSV: {}", all_file);
+    } else {
+      // Section 1: FF-to-FF edges
+      file << "# Section: REG2REG (" << ff_edges.size() << " edges)\n";
+      file << "from_ff,to_ff,slack_max_ns,slack_min_ns,arrival_max_ns,arrival_min_ns,"
+              "required_max_ns,required_min_ns,from_x,from_y,from_tier,to_x,to_y,to_tier\n";
+      for (const auto& e : ff_edges) {
+        file << e.from_ff << "," << e.to_ff << ","
+             << e.slack_max << "," << e.slack_min << ","
+             << e.arrival_max << "," << e.arrival_min << ","
+             << e.required_max << "," << e.required_min << ","
+             << e.from_x << "," << e.from_y << "," << e.from_tier << ","
+             << e.to_x << "," << e.to_y << "," << e.to_tier << "\n";
+      }
+      // Section 2: IO edges
+      file << "# Section: IO (" << io_edges.size() << " edges)\n";
+      file << "edge_type,port_name,ff_name,slack_setup_ns,slack_hold_ns\n";
+      for (const auto& e : io_edges) {
+        file << e.edge_type << "," << e.port_name << "," << e.ff_name << ",";
+        if (e.has_setup) file << e.slack_setup_ns;
+        file << ",";
+        if (e.has_hold) file << e.slack_hold_ns;
+        file << "\n";
+      }
+      file.close();
+      logger_->info(utl::CTS, 611, "Wrote all.csv: {} reg2reg + {} IO edges to {}",
+                    ff_edges.size(), io_edges.size(), all_file);
+    }
+  }
+
+  logger_->report("==========================================");
+  logger_->report("Sequential graph extraction complete!");
+  logger_->report("  reg2reg: {}", reg2reg_file);
+  logger_->report("  IO:      {}", io_file);
+  logger_->report("  all:     {}", all_file);
+  logger_->report("==========================================");
+}
+
+// JYJ (2026-03-21): ODB-based sequential graph extraction.
+// Uses parseODB() instead of parseVerilog() — correct for hierarchical designs.
+void TritonCTS::extractSequentialGraphODB(const std::string& output_base)
+{
+  logger_->report("==========================================");
+  logger_->report("Sequential Graph Extraction (ODB-based)");
+  logger_->report("==========================================");
+  logger_->report("Output base: {}", output_base);
+  logger_->report("==========================================");
+
+  // Use empty verilog_path (not needed for ODB mode)
+  VerilogFFExtractor extractor("", getBlock(), openSta_, network_, logger_);
+
+  // ODB-based parsing (flat netlist, no Verilog file needed)
+  extractor.parseODB();
+
+  // Extract FF-to-FF edges
+  auto ff_edges = extractor.extractFFEdges();
+
+  // JYJ (2026-03-22): Timing fill mode selection via env vars.
+  // SKIP_TIMING=1: no timing at all (structural only, ~2 min)
+  // FAST_TIMING=1: per-vertex slack lookup (~seconds, approximate: all edges to same capture FF get same timing)
+  // default: per-edge findPathEnds (exact but slow, ~hours for large designs)
+  const char* skip_timing_env = std::getenv("SKIP_TIMING");
+  const char* fast_timing_env = std::getenv("FAST_TIMING");
+  bool skip_timing = (skip_timing_env && std::string(skip_timing_env) == "1");
+  bool fast_timing = (fast_timing_env && std::string(fast_timing_env) == "1");
+  if (skip_timing) {
+    logger_->info(utl::CTS, 618, "SKIP_TIMING=1: skipping STA timing fill (structural-only mode)");
+  } else if (fast_timing) {
+    logger_->info(utl::CTS, 635, "FAST_TIMING=1: using per-vertex slack lookup (fast, approximate)");
+    extractor.fillTimingInfoFast(ff_edges);
+  } else {
+    extractor.fillTimingInfo(ff_edges);
+  }
+
+  // Write reg2reg CSV
+  std::string reg2reg_file = output_base + ".reg2reg.csv";
+  extractor.writeCSV(ff_edges, reg2reg_file);
+
+  // Extract IO edges (STA-based, always runs — only ~500 STA calls, fast)
+  std::vector<IOEdgeVerilog> io_edges;
+  std::string io_file = output_base + ".io.csv";
+  io_edges = extractor.extractIOEdges();
+  extractor.writeIOCSV(io_edges, io_file);
+
+  // Write combined all.csv
+  std::string all_file = output_base + ".all.csv";
+  {
+    std::ofstream file(all_file);
+    if (!file.is_open()) {
+      logger_->warn(utl::CTS, 615, "Cannot open all CSV: {}", all_file);
+    } else {
+      file << "# Section: REG2REG (" << ff_edges.size() << " edges)\n";
+      file << "from_ff,to_ff,slack_max_ns,slack_min_ns,arrival_max_ns,arrival_min_ns,"
+              "required_max_ns,required_min_ns,from_x,from_y,from_tier,to_x,to_y,to_tier\n";
+      for (const auto& e : ff_edges) {
+        file << e.from_ff << "," << e.to_ff << ","
+             << e.slack_max << "," << e.slack_min << ","
+             << e.arrival_max << "," << e.arrival_min << ","
+             << e.required_max << "," << e.required_min << ","
+             << e.from_x << "," << e.from_y << "," << e.from_tier << ","
+             << e.to_x << "," << e.to_y << "," << e.to_tier << "\n";
+      }
+      file << "# Section: IO (" << io_edges.size() << " edges)\n";
+      file << "edge_type,port_name,ff_name,slack_setup_ns,slack_hold_ns\n";
+      for (const auto& e : io_edges) {
+        file << e.edge_type << "," << e.port_name << "," << e.ff_name << ",";
+        if (e.has_setup) file << e.slack_setup_ns;
+        file << ",";
+        if (e.has_hold) file << e.slack_hold_ns;
+        file << "\n";
+      }
+      file.close();
+      logger_->info(utl::CTS, 616, "Wrote all.csv: {} reg2reg + {} IO edges to {}",
+                    ff_edges.size(), io_edges.size(), all_file);
+    }
+  }
+
+  logger_->report("==========================================");
+  logger_->report("ODB sequential graph extraction complete!");
+  logger_->report("  reg2reg: {}", reg2reg_file);
+  logger_->report("  IO:      {}", io_file);
+  logger_->report("  all:     {}", all_file);
+  logger_->report("==========================================");
+}
+
+// JYJ (2026-03-21): IO timing edges only
+void TritonCTS::extractIOTimingEdges(const std::string& verilog_file,
+                                      const std::string& output_file)
+{
+  VerilogFFExtractor extractor(verilog_file, getBlock(), openSta_, network_, logger_);
+  extractor.parseVerilog();  // Need register names for ODB lookup
+  auto io_edges = extractor.extractIOEdges();
+  extractor.writeIOCSV(io_edges, output_file);
+}
+
+void TritonCTS::runUsefulSkewLP(const std::string& ff_graph_file,
+                                double clock_period,
+                                double max_delta,
+                                bool consider_hold)
+{
+  logger_->report("==========================================");
+  logger_->report("Useful Skew LP Optimization (Phase 4)");
+  logger_->report("==========================================");
+
+  BufferSizingLP lp_optimizer(getBlock(), openSta_, network_, logger_);
+
+  // Set parameters
+  if (clock_period > 0) {
+    lp_optimizer.setClockPeriod(clock_period);
+  }
+  if (max_delta > 0) {
+    lp_optimizer.setMaxDelta(max_delta);
+  }
+  lp_optimizer.setConsiderHold(consider_hold);
+  lp_optimizer.setObjective(LPObjective::MAXIMIZE_WORST_SLACK);
+
+  // Run optimization
+  LPResult result = lp_optimizer.optimizeFromFile(ff_graph_file);
+
+  // Report results
+  lp_optimizer.reportResults(result);
+
+  // Note: applyDelayAdjustments is placeholder for future implementation
+  // lp_optimizer.applyDelayAdjustments(result);
+
+  logger_->report("==========================================");
+  logger_->report("Useful Skew LP Optimization complete!");
+  logger_->report("==========================================");
+}
+
+// 3D CTS: Read HB (Hybrid Bond) parameters from LEF technology file
+void TritonCTS::initHbParametersFromLef()
+{
+  if (!options_->is3dCtsEnabled()) {
+    return;
+  }
+
+  odb::dbTech* tech = db_->getTech();
+  if (!tech) {
+    logger_->warn(CTS, 332, "No technology found, using default HB parameters.");
+    return;
+  }
+
+  // Find the HB layer by name
+  std::string hbLayerName = options_->getHbLayerName();
+  odb::dbTechLayer* hbLayer = tech->findLayer(hbLayerName.c_str());
+
+  if (!hbLayer) {
+    logger_->warn(CTS, 333, "HB layer '{}' not found in LEF. Using default HB parameters.",
+                  hbLayerName);
+    return;
+  }
+
+  // Check if it's a CUT layer (via layer)
+  if (hbLayer->getType() != odb::dbTechLayerType::CUT) {
+    logger_->warn(CTS, 334, "HB layer '{}' is not a CUT layer. Using default HB parameters.",
+                  hbLayerName);
+    return;
+  }
+
+  // Read resistance from LEF
+  double resistance = hbLayer->getResistance();
+  if (resistance > 0.0) {
+    options_->setHbResistance(resistance);
+    logger_->info(CTS, 335, "3D CTS: HB resistance read from LEF: {} ohms", resistance);
+  }
+
+  // Read width (pitch) from LEF
+  int widthDbu = hbLayer->getWidth();
+  if (widthDbu > 0) {
+    double widthUm = static_cast<double>(widthDbu) / tech->getDbUnitsPerMicron();
+    options_->setHbPitch(widthUm);
+    logger_->info(CTS, 336, "3D CTS: HB pitch read from LEF: {} um", widthUm);
+  }
+
+  // Note: Capacitance is typically not in LEF for CUT layers,
+  // so we keep the default or user-specified value
+  logger_->info(CTS, 337, "3D CTS: HB capacitance: {} fF (default or user-specified)",
+                options_->getHbCapacitance());
 }
 
 }  // namespace cts

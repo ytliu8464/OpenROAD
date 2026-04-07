@@ -171,6 +171,12 @@ class TechChar
   double getCapPerDBU() const { return capPerDBU_; }
   utl::Logger* getLogger() { return options_->getLogger(); }
 
+  // HB (Hybrid Bond) delay calculation for 3D CTS
+  // Returns delay in ps for a given load capacitance
+  double computeHbDelay(double loadCapacitanceFf) const;
+  // Returns total delay for HB via including parasitic capacitance
+  double getHbDelayPs() const;
+
  private:
   // SolutionData represents the various different structures of the
   // characterization segment. Ports, insts, nets...

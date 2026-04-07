@@ -29,11 +29,17 @@ namespace cts {
 struct FFEdge {
   std::string from_ff;
   std::string to_ff;
-  double slack;      // in seconds
-  double arrival;    // in seconds
-  double required;   // in seconds
-  int from_x, from_y; // location of source FF
-  int to_x, to_y;     // location of sink FF
+  // Setup timing (max path / late path)
+  double slack_max;      // setup slack in seconds
+  double arrival_max;    // late arrival in seconds
+  double required_max;   // setup required in seconds
+  // Hold timing (min path / early path)
+  double slack_min;      // hold slack in seconds
+  double arrival_min;    // early arrival in seconds
+  double required_min;   // hold required in seconds
+  // Location
+  int from_x, from_y;    // location of source FF
+  int to_x, to_y;        // location of sink FF
 };
 
 class FFGraphExtractor

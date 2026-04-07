@@ -5,6 +5,7 @@ include("openroad")
 
 # https://github.com/The-OpenROAD-Project/OpenROAD/issues/1186
 find_package(LEMON NAMES LEMON lemon REQUIRED)
+find_package(ortools REQUIRED)
 
 add_library(cts_lib
     Clock.cpp
@@ -17,6 +18,8 @@ add_library(cts_lib
     LatencyBalancer.cpp
     CtsOptions.cpp
     FFGraphExtractor.cpp
+    VerilogFFExtractor.cpp
+    BufferSizingLP.cpp
 )
 
 swig_lib(NAME      cts
@@ -57,6 +60,7 @@ target_link_libraries(cts_lib
     OpenSTA
     stt_lib
     utl_lib
+    ortools::ortools
 )
 
 target_link_libraries(cts

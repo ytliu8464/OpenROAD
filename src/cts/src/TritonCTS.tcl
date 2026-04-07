@@ -363,7 +363,17 @@ sta::define_cmd_args "clock_tree_synthesis" {[-wire_unit unit]
                                              [-delay_buffer_derate] \
                                              [-library] \
                                              [-repair_clock_nets] \
-                                             [-no_insertion_delay]
+                                             [-no_insertion_delay] \
+                                             [-enable_3d_cts] \
+                                             [-cross_tier_penalty penalty] \
+                                             [-upper_tier_buffer buffer] \
+                                             [-bottom_tier_buffer buffer] \
+                                             [-enable_hb_aware_cts] \
+                                             [-hb_resistance resistance] \
+                                             [-hb_capacitance capacitance] \
+                                             [-hb_delay delay] \
+                                             [-hb_pitch pitch] \
+                                             [-hb_layer_name name]
 } ;# checker off
 
 proc clock_tree_synthesis { args } {
@@ -376,10 +386,13 @@ proc clock_tree_synthesis { args } {
           -macro_clustering_size -macro_clustering_max_diameter \
           -sink_clustering_levels -tree_buf \
           -apply_ndr \
-          -sink_buffer_max_cap_derate -delay_buffer_derate -library} \
+          -sink_buffer_max_cap_derate -delay_buffer_derate -library \
+          -cross_tier_penalty -upper_tier_buffer -bottom_tier_buffer \
+          -hb_resistance -hb_capacitance -hb_delay -hb_pitch -hb_layer_name} \
     flags {-post_cts_disable -sink_clustering_enable -balance_levels \
            -obstruction_aware -no_obstruction_aware \
-           -dont_use_dummy_load -repair_clock_nets -no_insertion_delay
+           -dont_use_dummy_load -repair_clock_nets -no_insertion_delay \
+           -enable_3d_cts -enable_hb_aware_cts
   } ;# checker off
 
   sta::check_argc_eq0 "clock_tree_synthesis" $args
@@ -539,6 +552,56 @@ proc clock_tree_synthesis { args } {
     cts::set_insertion_delay true
   }
 
+  # 3D CTS support
+  if { [info exists flags(-enable_3d_cts)] } {
+    cts::enable_3d_cts true
+    utl::info CTS 300 "3D CTS enabled with tier-aware sink clustering."
+  }
+  if { [info exists keys(-cross_tier_penalty)] } {
+    set penalty $keys(-cross_tier_penalty)
+    cts::set_cross_tier_penalty $penalty
+    utl::info CTS 301 "3D CTS cross-tier penalty set to $penalty um."
+  }
+  if { [info exists keys(-upper_tier_buffer)] } {
+    set buffer $keys(-upper_tier_buffer)
+    cts::set_upper_tier_buffer $buffer
+  }
+  if { [info exists keys(-bottom_tier_buffer)] } {
+    set buffer $keys(-bottom_tier_buffer)
+    cts::set_bottom_tier_buffer $buffer
+  }
+
+  # HB-aware CTS support
+  if { [info exists flags(-enable_hb_aware_cts)] } {
+    cts::enable_hb_aware_cts true
+    utl::info CTS 312 "HB-aware CTS enabled. HB vias will be inserted for cross-tier connections."
+  }
+  if { [info exists keys(-hb_resistance)] } {
+    set resistance $keys(-hb_resistance)
+    cts::set_hb_resistance $resistance
+    utl::info CTS 313 "HB resistance set to $resistance ohms."
+  }
+  if { [info exists keys(-hb_capacitance)] } {
+    set capacitance $keys(-hb_capacitance)
+    cts::set_hb_capacitance $capacitance
+    utl::info CTS 314 "HB capacitance set to $capacitance fF."
+  }
+  if { [info exists keys(-hb_delay)] } {
+    set delay $keys(-hb_delay)
+    cts::set_hb_delay $delay
+    utl::info CTS 315 "HB delay set to $delay ps."
+  }
+  if { [info exists keys(-hb_pitch)] } {
+    set pitch $keys(-hb_pitch)
+    cts::set_hb_pitch $pitch
+    utl::info CTS 316 "HB pitch set to $pitch um."
+  }
+  if { [info exists keys(-hb_layer_name)] } {
+    set name $keys(-hb_layer_name)
+    cts::set_hb_layer_name $name
+    utl::info CTS 317 "HB layer name set to $name."
+  }
+
   if { [ord::get_db_block] == "NULL" } {
     utl::error CTS 103 "No design block found."
   }
@@ -571,4 +634,54 @@ proc clock_tree_synthesis_debug { args } {
 
   cts::set_debug_cmd
 }
+}
+
+# Useful Skew LP Optimization (Phase 4)
+sta::define_cmd_args "useful_skew_lp" {-ff_graph_file file \
+                                        [-clock_period period] \
+                                        [-max_delta delta] \
+                                        [-consider_hold] \
+                                        [-no_hold]}
+
+proc useful_skew_lp { args } {
+  sta::parse_key_args "useful_skew_lp" args \
+    keys {-ff_graph_file -clock_period -max_delta} \
+    flags {-consider_hold -no_hold}
+
+  sta::check_argc_eq0 "useful_skew_lp" $args
+
+  if { ![info exists keys(-ff_graph_file)] } {
+    utl::error CTS 360 "-ff_graph_file is required. Use extract_ff_timing_graph to generate it."
+  }
+
+  set ff_graph_file $keys(-ff_graph_file)
+
+  # Clock period in nanoseconds, convert to seconds
+  set clock_period 0.0
+  if { [info exists keys(-clock_period)] } {
+    set clock_period [expr $keys(-clock_period) * 1e-9]
+  }
+
+  # Max delta in picoseconds, convert to seconds
+  set max_delta 0.0
+  if { [info exists keys(-max_delta)] } {
+    set max_delta [expr $keys(-max_delta) * 1e-12]
+  }
+
+  # Hold constraint consideration (default: true)
+  set consider_hold 1
+  if { [info exists flags(-no_hold)] } {
+    set consider_hold 0
+  }
+
+  utl::info CTS 361 "Running Useful Skew LP Optimization..."
+  utl::info CTS 362 "FF graph file: $ff_graph_file"
+  if { $clock_period > 0 } {
+    utl::info CTS 363 "Clock period: [expr $clock_period * 1e9] ns"
+  }
+  if { $max_delta > 0 } {
+    utl::info CTS 364 "Max delta: [expr $max_delta * 1e12] ps"
+  }
+
+  cts::run_useful_skew_lp $ff_graph_file $clock_period $max_delta $consider_hold
 }

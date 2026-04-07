@@ -1816,4 +1816,31 @@ bool TechChar::isTopologyMonotonic(const std::vector<size_t>& row)
   return monotonic;
 }
 
+// HB (Hybrid Bond) delay calculation for 3D CTS
+// Returns delay in ps for a given load capacitance in fF
+// Delay model: tau = R_hb * C_load
+// R_hb is typically ~0.02 ohms for advanced HB technology
+double TechChar::computeHbDelay(double loadCapacitanceFf) const
+{
+  double resistance = options_->getHbResistance();  // ohms
+  double capacitance = loadCapacitanceFf * 1e-15;   // convert fF to F
+  // RC delay in seconds, convert to ps
+  double delaySeconds = resistance * capacitance;
+  return delaySeconds * 1e12;  // return delay in ps
+}
+
+// Returns total delay for HB via including its own parasitic capacitance
+// If user has set a fixed HB delay, return that; otherwise calculate
+double TechChar::getHbDelayPs() const
+{
+  double userDelay = options_->getHbDelay();
+  if (userDelay > 0.0) {
+    return userDelay;  // user-specified delay in ps
+  }
+  // Calculate based on HB resistance and parasitic capacitance
+  // Typical HB has ~1fF parasitic capacitance
+  double hbCap = options_->getHbCapacitance();  // fF
+  return computeHbDelay(hbCap);
+}
+
 }  // namespace cts

@@ -353,6 +353,30 @@ class CtsOptions : public odb::dbBlockCallBackObj
     return "";
   }
 
+  // 3D CTS support
+  void enable3dCts(bool enable) { enable3dCts_ = enable; }
+  bool is3dCtsEnabled() const { return enable3dCts_; }
+  void setCrossTierPenalty(double penalty) { crossTierPenalty_ = penalty; }
+  double getCrossTierPenalty() const { return crossTierPenalty_; }
+  void setUpperTierBuffer(const std::string& buffer) { upperTierBuffer_ = buffer; }
+  std::string getUpperTierBuffer() const { return upperTierBuffer_; }
+  void setBottomTierBuffer(const std::string& buffer) { bottomTierBuffer_ = buffer; }
+  std::string getBottomTierBuffer() const { return bottomTierBuffer_; }
+
+  // HB (Hybrid Bond) parameters for 3D CTS
+  void setHbResistance(double resistance) { hbResistance_ = resistance; }
+  double getHbResistance() const { return hbResistance_; }
+  void setHbCapacitance(double capacitance) { hbCapacitance_ = capacitance; }
+  double getHbCapacitance() const { return hbCapacitance_; }
+  void setHbDelay(double delay) { hbDelay_ = delay; }
+  double getHbDelay() const { return hbDelay_; }
+  void setHbPitch(double pitch) { hbPitch_ = pitch; }
+  double getHbPitch() const { return hbPitch_; }
+  void setHbLayerName(const std::string& name) { hbLayerName_ = name; }
+  std::string getHbLayerName() const { return hbLayerName_; }
+  void enableHbAwareCts(bool enable) { hbAwareCts_ = enable; }
+  bool isHbAwareCtsEnabled() const { return hbAwareCts_; }
+
  private:
   std::string clockNets_;
   std::string rootBuffer_;
@@ -421,6 +445,20 @@ class CtsOptions : public odb::dbBlockCallBackObj
   MasterCount dummy_count_;
   bool repairClockNets_ = false;
   NdrStrategy ndrStrategy_ = NdrStrategy::HALF;
+
+  // 3D CTS support
+  bool enable3dCts_ = false;
+  double crossTierPenalty_ = 5.0;  // default 5um (hybrid bond pitch)
+  std::string upperTierBuffer_;
+  std::string bottomTierBuffer_;
+
+  // HB (Hybrid Bond) parameters for 3D CTS
+  double hbResistance_ = 0.02;       // default from LEF (ohms)
+  double hbCapacitance_ = 0.001;     // default capacitance (fF)
+  double hbDelay_ = 0.0;             // HB delay (ps), 0 = auto-calculate
+  double hbPitch_ = 1.0;             // HB pitch (um)
+  std::string hbLayerName_ = "hb_layer";  // HB layer name in LEF
+  bool hbAwareCts_ = false;          // enable HB-aware CTS
 };
 
 }  // namespace cts

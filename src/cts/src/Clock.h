@@ -26,7 +26,16 @@ namespace cts {
 enum InstType : uint8_t
 {
   CLOCK_BUFFER,
-  CLOCK_SINK
+  CLOCK_SINK,
+  HYBRID_BOND  // HB via for 3D IC tier crossing
+};
+
+// 3D IC tier enumeration
+enum Tier : int8_t
+{
+  TIER_UNKNOWN = -1,
+  TIER_BOTTOM = 0,  // T1
+  TIER_UPPER = 1    // T2
 };
 
 class ClockInst
@@ -73,6 +82,21 @@ class ClockInst
   void setIdealOutputCap(float cap) { idealOutputCap_ = cap; }
   float getIdealOutputCap() const { return idealOutputCap_; }
 
+  // 3D CTS tier support
+  void setTier(Tier tier) { tier_ = tier; }
+  Tier getTier() const { return tier_; }
+  void inferTierFromMaster()
+  {
+    // Infer tier from master cell name suffix
+    if (master_.find("_upper") != std::string::npos) {
+      tier_ = TIER_UPPER;
+    } else if (master_.find("_bottom") != std::string::npos) {
+      tier_ = TIER_BOTTOM;
+    } else {
+      tier_ = TIER_UNKNOWN;
+    }
+  }
+
  private:
   std::string name_;
   std::string master_;
@@ -84,6 +108,7 @@ class ClockInst
   double insertionDelay_;  // insertion delay in terms of length, not time
   float outputCap_;        // current load cap seen by this instance
   float idealOutputCap_;   // ideal load cap needed for perfectly balanced tree
+  Tier tier_ = TIER_UNKNOWN;  // 3D IC tier (upper or bottom)
 };
 
 //-----------------------------------------------------------------------------
@@ -181,6 +206,25 @@ class Clock
     return clockBuffers_.back();
   }
 
+  // 3D CTS: Add HB (Hybrid Bond) via instance for tier crossing
+  ClockInst& addHybridBond(const std::string& name,
+                           int x,
+                           int y,
+                           Tier sourceTier,
+                           Tier targetTier)
+  {
+    // HB via connects two tiers at the same (x,y) location
+    std::string hbName = "hb_" + name + "_" + getName();
+    hybridBonds_.emplace_back(hbName, "HB_VIA", HYBRID_BOND, x, y);
+    ClockInst& hb = hybridBonds_.back();
+    hb.setTier(sourceTier);  // source tier
+    mapNameToInst_[hbName] = &hb;
+    numHybridBonds_++;
+    return hb;
+  }
+
+  unsigned getNumHybridBonds() const { return numHybridBonds_; }
+
   ClockInst* findClockByName(const std::string& name)
   {
     if (mapNameToInst_.find(name) == mapNameToInst_.end()) {
@@ -218,6 +262,19 @@ class Clock
                float insDelay)
   {
     sinks_.emplace_back(name, "", CLOCK_SINK, x, y, pinObj, inputCap, insDelay);
+  }
+
+  // 3D CTS: addSink with tier parameter
+  void addSink(const std::string& name,
+               int x,
+               int y,
+               odb::dbITerm* pinObj,
+               float inputCap,
+               float insDelay,
+               Tier tier)
+  {
+    sinks_.emplace_back(name, "", CLOCK_SINK, x, y, pinObj, inputCap, insDelay);
+    sinks_.back().setTier(tier);
   }
 
   std::string getName() const { return netName_; }
@@ -273,6 +330,7 @@ class Clock
 
   std::deque<ClockInst> sinks_;
   std::deque<ClockInst> clockBuffers_;
+  std::deque<ClockInst> hybridBonds_;  // 3D CTS: HB via instances
   std::deque<ClockSubNet> subNets_;
   std::unordered_map<std::string, ClockInst*> mapNameToInst_;
 
@@ -280,6 +338,7 @@ class Clock
   odb::dbObject* driverPin_ = nullptr;
 
   unsigned numLevels_ = 0;
+  unsigned numHybridBonds_ = 0;  // 3D CTS: count of HB vias
 };
 
 }  // namespace cts

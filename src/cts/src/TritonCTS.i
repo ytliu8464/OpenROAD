@@ -504,4 +504,108 @@ extract_ff_timing_graph(const char* output_file)
 {
   getTritonCts()->extractFFGraph(output_file);
 }
+
+void
+extract_ff_timing_graph_verilog(const char* verilog_file, const char* output_file)
+{
+  getTritonCts()->extractFFGraphFromVerilog(verilog_file, output_file);
+}
+
+// JYJ (2026-03-21) openroad_260321: Extract sequential graph with dual CSV output.
+// Outputs: <base>.reg2reg.csv (FF-to-FF only) + <base>.all.csv (FF-to-FF + IO edges)
+void
+extract_sequential_graph(const char* verilog_file, const char* output_base)
+{
+  getTritonCts()->extractSequentialGraph(verilog_file, output_base);
+}
+
+// JYJ (2026-03-21): Extract IO timing edges (PI->FF, FF->PO) only
+void
+extract_io_timing_edges(const char* verilog_file, const char* output_file)
+{
+  getTritonCts()->extractIOTimingEdges(verilog_file, output_file);
+}
+
+// JYJ (2026-03-21): ODB-based sequential graph extraction.
+// Uses flat ODB netlist directly — correct for ANY design including
+// hierarchical (multi-module) Innovus netlists.
+// Outputs: <base>.reg2reg.csv + <base>.all.csv (with IO edges)
+void
+extract_sequential_graph_odb(const char* output_base)
+{
+  getTritonCts()->extractSequentialGraphODB(output_base);
+}
+
+// 3D CTS support
+void
+enable_3d_cts(bool enable)
+{
+  getTritonCts()->getParms()->enable3dCts(enable);
+}
+
+void
+set_cross_tier_penalty(double penalty)
+{
+  getTritonCts()->getParms()->setCrossTierPenalty(penalty);
+}
+
+void
+set_upper_tier_buffer(const char* buffer)
+{
+  getTritonCts()->getParms()->setUpperTierBuffer(buffer);
+}
+
+void
+set_bottom_tier_buffer(const char* buffer)
+{
+  getTritonCts()->getParms()->setBottomTierBuffer(buffer);
+}
+
+// HB-aware CTS support
+void
+enable_hb_aware_cts(bool enable)
+{
+  getTritonCts()->getParms()->enableHbAwareCts(enable);
+}
+
+void
+set_hb_resistance(double resistance)
+{
+  getTritonCts()->getParms()->setHbResistance(resistance);
+}
+
+void
+set_hb_capacitance(double capacitance)
+{
+  getTritonCts()->getParms()->setHbCapacitance(capacitance);
+}
+
+void
+set_hb_delay(double delay)
+{
+  getTritonCts()->getParms()->setHbDelay(delay);
+}
+
+void
+set_hb_pitch(double pitch)
+{
+  getTritonCts()->getParms()->setHbPitch(pitch);
+}
+
+void
+set_hb_layer_name(const char* name)
+{
+  getTritonCts()->getParms()->setHbLayerName(name);
+}
+
+// Useful Skew LP Optimization (Phase 4)
+void
+run_useful_skew_lp(const char* ff_graph_file,
+                   double clock_period,
+                   double max_delta,
+                   bool consider_hold)
+{
+  getTritonCts()->runUsefulSkewLP(ff_graph_file, clock_period, max_delta, consider_hold);
+}
+
 %} //inline
