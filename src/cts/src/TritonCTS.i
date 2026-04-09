@@ -536,6 +536,14 @@ extract_sequential_graph_odb(const char* output_base)
   getTritonCts()->extractSequentialGraphODB(output_base);
 }
 
+// Full netlist graph extraction (all cells + pin-to-pin connectivity).
+// Outputs: <base>.nodes.csv + <base>.edges.csv
+void
+extract_full_graph(const char* output_base)
+{
+  getTritonCts()->extractFullGraph(output_base);
+}
+
 // 3D CTS support
 void
 enable_3d_cts(bool enable)

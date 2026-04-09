@@ -18,6 +18,7 @@ add_library(cts_lib
     LatencyBalancer.cpp
     CtsOptions.cpp
     FFGraphExtractor.cpp
+    FullGraphExtractor.cpp
     VerilogFFExtractor.cpp
     BufferSizingLP.cpp
 )

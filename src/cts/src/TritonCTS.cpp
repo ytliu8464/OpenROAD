@@ -29,6 +29,7 @@
 #include "Clock.h"
 #include "CtsOptions.h"
 #include "FFGraphExtractor.h"
+#include "FullGraphExtractor.h"
 #include "VerilogFFExtractor.h"
 #include "HTreeBuilder.h"
 #include "LatencyBalancer.h"
@@ -3019,6 +3020,12 @@ void TritonCTS::extractSequentialGraphODB(const std::string& output_base)
   logger_->report("  IO:      {}", io_file);
   logger_->report("  all:     {}", all_file);
   logger_->report("==========================================");
+}
+
+void TritonCTS::extractFullGraph(const std::string& output_base)
+{
+  FullGraphExtractor extractor(getBlock(), logger_);
+  extractor.extractFullGraph(output_base);
 }
 
 // JYJ (2026-03-21): IO timing edges only

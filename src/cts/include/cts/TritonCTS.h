@@ -110,6 +110,10 @@ class TritonCTS
   // Outputs: <base>.reg2reg.csv + <base>.all.csv
   void extractSequentialGraphODB(const std::string& output_base);
 
+  // Full netlist graph extraction (all cells + pin-to-pin connectivity).
+  // Outputs: <base>.nodes.csv + <base>.edges.csv
+  void extractFullGraph(const std::string& output_base);
+
   // Useful Skew LP Optimization (Phase 4)
   void runUsefulSkewLP(const std::string& ff_graph_file,
                        double clock_period,
