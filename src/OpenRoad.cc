@@ -91,6 +91,8 @@
 #include "utl/decode.h"
 #include "web/MakeWeb.h"
 #include "web/web.h"
+#include "wmk/MakeWatermark.h"
+#include "wmk/Watermark.h"
 
 namespace ord {
 extern const char* ord_tcl_inits[];
@@ -148,6 +150,7 @@ OpenRoad::~OpenRoad()
   delete dft_;
   delete estimate_parasitics_;
   delete web_server_;
+  delete watermark_;
   delete logger_;
   delete verilog_reader_;
   delete callback_handler_;
@@ -258,6 +261,7 @@ void OpenRoad::init(Tcl_Interp* tcl_interp,
   dft_ = new dft::Dft(db_, sta_, logger_);
   example_ = new exa::Example(db_, logger_);
   web_server_ = new web::WebServer(db_, sta_, logger_, tcl_interp);
+  watermark_ = new wmk::Watermark(db_, logger_);
 
   // Init components.
   Ord_Init(tcl_interp);
@@ -298,6 +302,7 @@ void OpenRoad::init(Tcl_Interp* tcl_interp,
   dft::initDft(tcl_interp);
   est::initTcl(tcl_interp);
   web::initWeb(tcl_interp);
+  wmk::initWatermark(tcl_interp);
 
   // Import exported commands to global namespace.
   Tcl_Eval(tcl_interp, "sta::define_sta_cmds");

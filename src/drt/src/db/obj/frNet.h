@@ -166,6 +166,11 @@ class frNet : public frBlockObject
   bool hasJumpers() { return has_jumpers_; }
   void setToBeDeleted(bool to_be_deleted) { to_be_deleted_ = to_be_deleted; }
   bool toBeDeleted() { return to_be_deleted_; }
+  // Routing watermark (Kahng et al., ISPD'98): when true, the detailed
+  // router inflates non-preferred-direction ("wrong-way") grid costs on
+  // this net to approximate a "limit way = 1" rule.
+  void setIsWatermark(bool w) { is_watermark_ = w; }
+  bool isWatermark() const { return is_watermark_; }
 
  protected:
   frString name_;
@@ -194,5 +199,7 @@ class frNet : public frBlockObject
   bool has_jumpers_{false};
   std::vector<frPinFig*> all_pinfigs_;
   bool to_be_deleted_{false};
+  // Routing watermark flag, see setIsWatermark().
+  bool is_watermark_{false};
 };
 }  // namespace drt

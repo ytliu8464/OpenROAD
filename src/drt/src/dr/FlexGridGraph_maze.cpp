@@ -553,8 +553,15 @@ frCost FlexGridGraph::getCosts(frMIdx gridX,
   frUInt4 jumper_cost = route_with_jumpers ? 10 : 1;
 
   // temporarily disable guideCost
-  return getEdgeLength(gridX, gridY, gridZ, dir)
-         + (gridCost ? router_cfg_->GRIDCOST * edgeLength : 0)
+  // Watermark: when the net being routed is a watermark net, inflate the
+  // non-preferred-direction grid cost by wrong_way_multiplier_ so the maze
+  // strongly avoids wrong-way jogs on that net.
+  const frCost gridCostVal
+      = gridCost
+            ? static_cast<frCost>(router_cfg_->GRIDCOST * edgeLength
+                                  * wrong_way_multiplier_)
+            : 0;
+  return getEdgeLength(gridX, gridY, gridZ, dir) + gridCostVal
          + (drcCost ? ggDRCCost_ * edgeLength : 0)
          + (markerCost ? ggMarkerCost_ * edgeLength : 0)
          + (shapeCost ? ggFixedShapeCost_ * edgeLength : 0)
