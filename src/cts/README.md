@@ -59,6 +59,11 @@ clock_tree_synthesis
     [-balance_levels]
     [-sink_clustering_levels levels]
     [-num_static_layers]
+    [-sfc_3opt]
+    [-sfc_balance weight]
+    [-sfc_cost cost]
+    [-sfc_optimizer optimizer]
+    [-sfc_refine]
     [-sink_clustering_buffer]
     [-obstruction_aware]
     [-apply_ndr strategy]
@@ -91,6 +96,11 @@ clock_tree_synthesis
 | `-clk_nets` | String containing the names of the clock roots. If this parameter is omitted, `cts` looks for the clock roots automatically. |
 | `-num_static_layers` | Set the number of static layers. The default value is `0`, and the allowed values are integers `[0, MAX_INT]`. |
 | `-sink_clustering_buffer` | Set the sink clustering buffer(s) to be used. |
+| `-sfc_optimizer` | How the space-filling-curve sink order is cut into clusters. `greedy` (default) is the stock sweep. `dp_rp` computes the optimal segmentation of the same order by restricted-partitioning dynamic programming, with the cluster count pinned to the greedy result so the two are compared at equal leaf-buffer cost. |
+| `-sfc_3opt` | Improve the space-filling-curve order with neighbour-limited 2-Opt and Or-Opt moves before it is segmented. Only has an effect together with `-sfc_optimizer dp_rp`. |
+| `-sfc_refine` | After segmentation, move or swap boundary sinks between neighbouring clusters whenever that lowers the summed cluster cost. |
+| `-sfc_cost` | Per-cluster cost used by `dp_rp` and `-sfc_refine`. `diameter` (default) is the maximum pairwise Manhattan distance; `radius` is the Manhattan radius about the cluster centre. |
+| `-sfc_balance` | Weight of a fanout-balance penalty added to the cluster cost, in units of the maximum cluster diameter. `0` (default) disables it. |
 | `-obstruction_aware` | Enables obstruction-aware buffering such that clock buffers are not placed on top of blockages or hard macros. This option may reduce legalizer displacement, leading to better latency, skew or timing QoR.  The default value is `False`, and the allowed values are bool. |
 | `-apply_ndr` | Applies 2X spacing non-default rule to clock nets except leaf-level nets following some strategy. There are four strategy options: `none, root_only, half, full`. If this is not specified, the default value is `none`. |
 | `-dont_use_dummy_load` | Don't apply dummy buffer or inverter cells at clock tree leaves to balance loads. The default values is `False`. |
@@ -150,6 +160,11 @@ set_cts_config
     [-num_static_layers num_layers]
     [-root_buf root_buf]
     [-sink_buffer_max_cap_derate derate_value]
+    [-sfc_3opt]
+    [-sfc_balance weight]
+    [-sfc_cost cost]
+    [-sfc_optimizer optimizer]
+    [-sfc_refine]
     [-sink_clustering_levels levels]
     [-sink_clustering_max_diameter max_diameter]
     [-sink_clustering_size cluster_size]
@@ -180,6 +195,11 @@ set_cts_config
 | `-sink_clustering_levels` | ... |
 | `-sink_clustering_max_diameter` | Specifies maximum diameter (in microns) of sink cluster for the register tree. The allowed values are integers `[0, MAX_INT]`. If this is not specified the diameter will be automatically chosen between `50, 100 or 200`, based on the tree buffer max cap. |
 | `-sink_clustering_size` | Specifies the maximum number of sinks per cluster for the register tree. The allowed values are integers `[0, MAX_INT]`. If this is not specified the size will be automatically chosen between `10, 20 or 30` based on the tree buffer max cap. |
+| `-sfc_optimizer` | How the space-filling-curve sink order is cut into clusters. `greedy` (default) is the stock sweep. `dp_rp` computes the optimal segmentation of the same order by restricted-partitioning dynamic programming, with the cluster count pinned to the greedy result so the two are compared at equal leaf-buffer cost. |
+| `-sfc_3opt` | Improve the space-filling-curve order with neighbour-limited 2-Opt and Or-Opt moves before it is segmented. Only has an effect together with `-sfc_optimizer dp_rp`. |
+| `-sfc_refine` | After segmentation, move or swap boundary sinks between neighbouring clusters whenever that lowers the summed cluster cost. |
+| `-sfc_cost` | Per-cluster cost used by `dp_rp` and `-sfc_refine`. `diameter` (default) is the maximum pairwise Manhattan distance; `radius` is the Manhattan radius about the cluster centre. |
+| `-sfc_balance` | Weight of a fanout-balance penalty added to the cluster cost, in units of the maximum cluster diameter. `0` (default) disables it. |
 | `-sink_clustering_levels` | ... |
 | `-skip_nets` | Tcl list containing the clock nets to be skipped (e.g. `{net1, net2}`). If the net is a root clock net, the whole clock is skipped, otherwise only the subnet specified is skipped. |
 | `-wire_unit` | Minimum unit distance between buffers for a specific wire. If this parameter is omitted, the code gets the value from ten times the height of `-root_buffer`. |
@@ -213,6 +233,11 @@ reset_cts_config
     [-num_static_layers]
     [-root_buf]
     [-sink_buffer_max_cap_derate]
+    [-sfc_3opt]
+    [-sfc_balance]
+    [-sfc_cost]
+    [-sfc_optimizer]
+    [-sfc_refine]
     [-sink_clustering_levels]
     [-sink_clustering_max_diameter]
     [-sink_clustering_size]

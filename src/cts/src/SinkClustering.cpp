@@ -12,6 +12,7 @@
 #include <sstream>
 #include <vector>
 
+#include "ClusterRefine.h"
 #include "CtsObserver.h"
 #include "CtsOptions.h"
 #include "HTreeBuilder.h"
@@ -189,6 +190,30 @@ void SinkClustering::run(const unsigned groupSize,
   computeAllThetas();
   sortPoints();
   bool bestSolutionFound = findBestMatching(groupSize);
+  if (options_->getSfc3Opt()
+      && options_->getSfcOptimizer() != CtsOptions::SfcOptimizer::DP_RP) {
+    // The greedy sweep consumes the space-filling-curve order directly, so a
+    // reordered tour only reaches the clustering through the optimal
+    // segmentation.  Reordering without it would have no effect at all.
+    logger_->warn(CTS,
+                  256,
+                  "-sfc_3opt has no effect without -sfc_optimizer dp_rp; the "
+                  "greedy sweep uses the space-filling-curve order as is.");
+  }
+  if (options_->getSfcOptimizer() == CtsOptions::SfcOptimizer::DP_RP) {
+    // The greedy sweep above still runs: it establishes max_diameter_ and
+    // max_size_, and it is the fallback if no feasible partition exists.
+    bestSolutionFound = findBestMatchingDpRp(groupSize) || bestSolutionFound;
+  }
+  if (options_->getSfcRefine() && !bestSolution_.empty()) {
+    const int moves = refineClusters(bestSolution_, groupSize);
+    debugPrint(logger_,
+               CTS,
+               "clustering",
+               1,
+               "Local refinement accepted {} moves",
+               moves);
+  }
   if (logger_->debugCheck(CTS, "Stree", 1)) {
     writePlotFile(groupSize);
   }
@@ -490,10 +515,361 @@ bool SinkClustering::isLimitExceeded(const unsigned size,
                                      const double capCost,
                                      const unsigned sizeLimit)
 {
+  // Note on cluster shape: `cost` here is the largest pairwise Manhattan
+  // distance in the cluster, and a point set whose Manhattan diameter is D
+  // always fits inside a diamond (Manhattan ball) of radius D/2 -- the two are
+  // exactly equivalent, since |dx| + |dy| = max(|du|, |dv|) for u = x+y and
+  // v = x-y.  So this bound is already a diamond constraint, and re-expressing
+  // it as a radius would change nothing.  What is not diamond-aligned is where
+  // the leaf buffer ends up: it is placed at the arithmetic centroid, whose
+  // worst-case distance to a sink can be up to ~1.5x the radius achieved by
+  // the true Manhattan center.  That gap is what the local tree pass reports
+  // as latency headroom, and it is addressed by moving the buffer, not by
+  // changing this test.
   return (useMaxCapLimit_
           && (capCost > options_->getSinkBufferInputCap() * kMaxCapFactor))
          || (use_max_size_ && (size >= sizeLimit))
          || (use_max_diameter_ && (cost > maxInternalDiameter_));
+}
+
+double SinkClustering::clusterCost(const std::vector<unsigned>& cluster) const
+{
+  if (cluster.empty()) {
+    return 0.0;
+  }
+  // Optional fanout-balance term.  Deviation from the target cluster size is
+  // charged in diameter units so it competes with the geometric objective on
+  // the same scale.
+  double balance = 0.0;
+  if (options_->getSfcBalance() > 0.0 && targetClusterSize_ > 0.0) {
+    balance
+        = options_->getSfcBalance() * maxInternalDiameter_
+          * std::abs(static_cast<double>(cluster.size()) - targetClusterSize_)
+          / targetClusterSize_;
+  }
+
+  std::vector<Point<double>> pts;
+  pts.reserve(cluster.size());
+  for (const unsigned idx : cluster) {
+    pts.push_back(points_[idx]);
+  }
+  if (options_->getSfcCost() == CtsOptions::SfcCost::RADIUS) {
+    // Largest distance from the location the leaf buffer will actually take,
+    // i.e. the quantity the paper calls D.
+    double cx = 0, cy = 0;
+    for (const Point<double>& p : pts) {
+      cx += p.getX();
+      cy += p.getY();
+    }
+    cx /= pts.size();
+    cy /= pts.size();
+    const Point<double> center(cx, cy);
+    double worst = 0;
+    for (const Point<double>& p : pts) {
+      worst = std::max(worst, HTree_->computeDist(p, center));
+    }
+    return (worst > 0 ? worst : maxInternalDiameter_) + balance;
+  }
+  // Sum-of-diameters, the objective the clustering study measured.
+  const double diameter = pairwiseDiameter(pts);
+  // A lone sink wastes a whole leaf buffer; the greedy sweep charges it the
+  // full diameter budget, so match that or the DP would prefer singletons.
+  return (diameter > 0 ? diameter : maxInternalDiameter_) + balance;
+}
+
+bool SinkClustering::clusterFeasible(const std::vector<unsigned>& cluster,
+                                     const unsigned groupSize) const
+{
+  // Replays the greedy sweep's own admission test over the cluster, so the DP
+  // and the refinement pass accept exactly the clusters the sweep would.
+  for (size_t t = 1; t < cluster.size(); ++t) {
+    const Point<double>& p = points_[cluster[t]];
+    double distanceCost = 0;
+    double capCost = pointsCap_[cluster[t]];
+    for (size_t m = 0; m < t; ++m) {
+      const double cost = HTree_->computeDist(p, points_[cluster[m]]);
+      if (useMaxCapLimit_) {
+        capCost += cost * capPerUnit_ + pointsCap_[cluster[m]];
+      }
+      distanceCost = std::max(cost, distanceCost);
+    }
+    const bool exceeded
+        = (useMaxCapLimit_
+           && (capCost > options_->getSinkBufferInputCap() * kMaxCapFactor))
+          || (use_max_size_ && (t >= groupSize))
+          || (use_max_diameter_ && (distanceCost > maxInternalDiameter_));
+    if (exceeded) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool SinkClustering::findBestMatchingDpRp(const unsigned groupSize)
+{
+  const int n = thetaIndexVector_.size();
+  if (n == 0) {
+    return false;
+  }
+  std::vector<unsigned> tour;
+  tour.reserve(n);
+  for (const auto& [theta, idx] : thetaIndexVector_) {
+    tour.push_back(idx);
+  }
+
+  if (options_->getSfc3Opt()) {
+    const int moves = improveTour3Opt(points_, tour);
+    debugPrint(logger_,
+               CTS,
+               "clustering",
+               1,
+               "3-Opt accepted {} moves on the space-filling-curve order",
+               moves);
+  }
+
+  // Target sinks per cluster: total sinks divided by the count the greedy
+  // sweep settled on, which is also the count the DP is pinned to.
+  targetClusterSize_ = bestSolution_.empty()
+                           ? 0.0
+                           : static_cast<double>(n) / bestSolution_.size();
+
+  // Longest run worth considering.  The size limit caps it when set; capacity
+  // and diameter cut it shorter anyway, which the feasibility walk discovers.
+  const int maxLen
+      = std::min<int>(n, use_max_size_ ? groupSize : kMaxDpClusterSize);
+
+  std::vector<std::vector<double>> sliceCost(
+      n, std::vector<double>(maxLen, kInfeasibleCost));
+  std::vector<unsigned> slice;
+  for (int i = 0; i < n; ++i) {
+    slice.clear();
+    for (int len = 1; len <= maxLen && i + len <= n; ++len) {
+      // Admit the next sink exactly the way the greedy sweep would, keeping
+      // the walk incremental: the test for the new sink only involves the
+      // members already in the run, so extending a run costs O(len) and the
+      // whole table costs O(n * maxLen^2) rather than a cubic re-check.
+      const unsigned idx = tour[i + len - 1];
+      if (len > 1) {
+        const Point<double>& p = points_[idx];
+        double distanceCost = 0;
+        double capCost = pointsCap_[idx];
+        for (const unsigned member : slice) {
+          const double cost = HTree_->computeDist(p, points_[member]);
+          if (useMaxCapLimit_) {
+            capCost += cost * capPerUnit_ + pointsCap_[member];
+          }
+          distanceCost = std::max(cost, distanceCost);
+        }
+        if (isLimitExceeded(slice.size(), distanceCost, capCost, groupSize)) {
+          break;  // longer runs starting at i are infeasible too
+        }
+      }
+      slice.push_back(idx);
+      sliceCost[i][len - 1] = clusterCost(slice);
+    }
+  }
+
+  // Pin the cluster count to what the greedy sweep produced, so the two are
+  // compared at equal leaf-buffer cost.  Without this the optimal partition of
+  // a sum-of-diameters objective is a swarm of tiny clusters, which is cheaper
+  // by that measure but pays for it in leaf buffers, area and power.  The
+  // count falls monotonically as the per-cluster charge rises, so bisect it.
+  const size_t target = bestSolution_.size();
+  if (target == 0) {
+    return false;
+  }
+  double lo = 0.0;
+  double hi = std::max(static_cast<double>(maxInternalDiameter_), 1e-9);
+  std::vector<std::vector<unsigned>> best;
+  for (int grow = 0; grow < kDpPenaltySteps; ++grow) {
+    best = dpRpSegment(tour, sliceCost, hi);
+    if (best.empty() || best.size() <= target) {
+      break;
+    }
+    lo = hi;
+    hi *= 4;
+  }
+  if (best.empty()) {
+    logger_->warn(CTS,
+                  251,
+                  "No feasible sink partition was found by the optimal "
+                  "segmentation; using the greedy solution instead.");
+    return false;
+  }
+  for (int step = 0; step < kDpPenaltySteps; ++step) {
+    const double mid = 0.5 * (lo + hi);
+    std::vector<std::vector<unsigned>> trial
+        = dpRpSegment(tour, sliceCost, mid);
+    if (trial.empty()) {
+      break;
+    }
+    if (trial.size() > target) {
+      lo = mid;
+    } else {
+      hi = mid;
+      best = std::move(trial);
+    }
+  }
+
+  double cost = 0;
+  for (const auto& cluster : best) {
+    cost += clusterCost(cluster);
+  }
+  double greedyCost = 0;
+  for (const auto& cluster : bestSolution_) {
+    greedyCost += clusterCost(cluster);
+  }
+  // Only take the optimal partition when it is genuinely better on the shared
+  // objective at no more clusters; otherwise the greedy answer stands.
+  if (best.size() > target || cost >= greedyCost) {
+    debugPrint(logger_,
+               CTS,
+               "clustering",
+               1,
+               "Optimal segmentation kept the greedy solution "
+               "(dp {} clusters cost {:0.3f} vs greedy {} cost {:0.3f})",
+               best.size(),
+               cost,
+               target,
+               greedyCost);
+    return false;
+  }
+  debugPrint(logger_,
+             CTS,
+             "clustering",
+             1,
+             "Optimal segmentation: {} clusters, cost {:0.3f} "
+             "(greedy {} clusters, cost {:0.3f})",
+             best.size(),
+             cost,
+             target,
+             greedyCost);
+  bestSolution_ = std::move(best);
+  bestSolutionCost_ = cost;
+  return true;
+}
+
+int SinkClustering::refineClusters(std::vector<std::vector<unsigned>>& clusters,
+                                   const unsigned groupSize)
+{
+  const int numClusters = clusters.size();
+  if (numClusters < 2) {
+    return 0;
+  }
+  // Neighbours come from two sources, because each catches cases the other
+  // misses: adjacency along the space-filling curve, and spatial proximity of
+  // the cluster centres (which the curve can separate at a fault line).
+  std::vector<Point<double>> centers;
+  centers.reserve(numClusters);
+  for (const auto& cluster : clusters) {
+    double cx = 0, cy = 0;
+    for (const unsigned idx : cluster) {
+      cx += points_[idx].getX();
+      cy += points_[idx].getY();
+    }
+    centers.emplace_back(cx / cluster.size(), cy / cluster.size());
+  }
+
+  std::vector<double> cost(numClusters);
+  for (int c = 0; c < numClusters; ++c) {
+    cost[c] = clusterCost(clusters[c]);
+  }
+
+  int accepted = 0;
+  const int passes = options_->getSfcRefinePasses();
+  for (int pass = 0; pass < passes; ++pass) {
+    int passMoves = 0;
+    for (int a = 0; a < numClusters; ++a) {
+      if (clusters[a].empty()) {
+        continue;
+      }
+      // Curve neighbours plus the nearest few centres.
+      std::vector<int> peers;
+      if (a > 0) {
+        peers.push_back(a - 1);
+      }
+      if (a + 1 < numClusters) {
+        peers.push_back(a + 1);
+      }
+      std::vector<int> byDist;
+      for (int b = 0; b < numClusters; ++b) {
+        if (b != a && !clusters[b].empty()) {
+          byDist.push_back(b);
+        }
+      }
+      const int wanted = std::min<int>(kRefineNeighbors, byDist.size());
+      std::partial_sort(byDist.begin(),
+                        byDist.begin() + wanted,
+                        byDist.end(),
+                        [&](int p, int q) {
+                          return centers[a].computeDist(centers[p])
+                                 < centers[a].computeDist(centers[q]);
+                        });
+      peers.insert(peers.end(), byDist.begin(), byDist.begin() + wanted);
+
+      for (const int b : peers) {
+        if (b == a || clusters[b].empty()) {
+          continue;
+        }
+        const double before = cost[a] + cost[b];
+        // Move: hand b the sink of a that sits closest to b's centre.
+        int bestPos = -1;
+        double bestDist = std::numeric_limits<double>::max();
+        for (size_t t = 0; t < clusters[a].size(); ++t) {
+          const double d = points_[clusters[a][t]].computeDist(centers[b]);
+          if (d < bestDist) {
+            bestDist = d;
+            bestPos = t;
+          }
+        }
+        if (bestPos < 0 || clusters[a].size() < 2) {
+          continue;
+        }
+        std::vector<unsigned> newA = clusters[a];
+        std::vector<unsigned> newB = clusters[b];
+        newB.push_back(newA[bestPos]);
+        newA.erase(newA.begin() + bestPos);
+        if (!clusterFeasible(newB, groupSize)) {
+          continue;
+        }
+        const double after = clusterCost(newA) + clusterCost(newB);
+        if (after < before - 1e-12) {
+          cost[a] = clusterCost(newA);
+          cost[b] = clusterCost(newB);
+          clusters[a] = std::move(newA);
+          clusters[b] = std::move(newB);
+          double cx = 0, cy = 0;
+          for (const unsigned idx : clusters[a]) {
+            cx += points_[idx].getX();
+            cy += points_[idx].getY();
+          }
+          centers[a]
+              = Point<double>(cx / clusters[a].size(), cy / clusters[a].size());
+          cx = cy = 0;
+          for (const unsigned idx : clusters[b]) {
+            cx += points_[idx].getX();
+            cy += points_[idx].getY();
+          }
+          centers[b]
+              = Point<double>(cx / clusters[b].size(), cy / clusters[b].size());
+          ++passMoves;
+          break;
+        }
+      }
+    }
+    accepted += passMoves;
+    if (passMoves == 0) {
+      break;
+    }
+  }
+
+  // Drop clusters the refinement emptied.
+  clusters.erase(
+      std::remove_if(clusters.begin(),
+                     clusters.end(),
+                     [](const std::vector<unsigned>& c) { return c.empty(); }),
+      clusters.end());
+  return accepted;
 }
 
 void SinkClustering::writePlotFile(unsigned groupSize)

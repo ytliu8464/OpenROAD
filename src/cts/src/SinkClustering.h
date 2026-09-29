@@ -71,6 +71,19 @@ class SinkClustering
       int& single_cluster_count,
       int& solved_cluster_count);
   bool findBestMatching(unsigned groupSize);
+  // Optimal segmentation of the space-filling-curve order (Sec. II.B).
+  // Returns false when no feasible partition exists, in which case the caller
+  // keeps the greedy sweep's answer.
+  bool findBestMatchingDpRp(unsigned groupSize);
+  // Cost and feasibility of one cluster, shared by the DP, the refinement pass
+  // and the reporting so they cannot disagree.
+  double clusterCost(const std::vector<unsigned>& cluster) const;
+  bool clusterFeasible(const std::vector<unsigned>& cluster,
+                       unsigned groupSize) const;
+  // Boundary-sink moves and swaps between neighbouring clusters.  Returns the
+  // number of accepted modifications.
+  int refineClusters(std::vector<std::vector<unsigned>>& clusters,
+                     unsigned groupSize);
   void writePlotFile(unsigned groupSize);
 
   double computeTheta(double x, double y) const;
@@ -99,6 +112,13 @@ class SinkClustering
   bool useMaxCapLimit_;
   int scaleFactor_;
   static constexpr double kMaxCapFactor = 10;
+  // Longest run the optimal segmentation will consider when no explicit size
+  // limit is set; capacitance and diameter normally cut clusters far shorter.
+  static constexpr int kMaxDpClusterSize = 64;
+  // Nearest cluster centres examined per cluster during local refinement.
+  static constexpr int kRefineNeighbors = 4;
+  // Bisection steps used to hit the target cluster count.
+  static constexpr int kDpPenaltySteps = 24;
   HTreeBuilder* HTree_;
   bool firstRun_ = true;
   double xSpan_ = 0.0;
@@ -106,6 +126,8 @@ class SinkClustering
   double max_diameter_ = 0.0;
   double max_size_ = 0.0;
   double bestSolutionCost_ = std::numeric_limits<double>::max();
+  // Sinks per cluster the balance term aims at; 0 disables it.
+  double targetClusterSize_ = 0.0;
 };
 
 }  // namespace cts

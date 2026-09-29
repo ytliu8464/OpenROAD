@@ -44,6 +44,7 @@ COMPULSORY_TESTS = [
     "no_clocks",
     "no_sinks",
     "post_cts_opt",
+    "sfc_dp_rp",
     "simple_test",
     "simple_test_clustered",
     "simple_test_clustered_max_cap",
@@ -202,6 +203,9 @@ filegroup(
             "simple_test": [
                 "16sinks.def",
                 "simple_test_out.defok",
+            ],
+            "sfc_dp_rp": [
+                "cts-helpers.tcl",
             ],
             "simple_test_clustered": [
                 "cts-helpers.tcl",

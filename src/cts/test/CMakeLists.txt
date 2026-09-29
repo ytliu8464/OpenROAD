@@ -39,6 +39,7 @@ or_integration_tests(
     no_clocks
     no_sinks
     post_cts_opt
+    sfc_dp_rp
     simple_test
     simple_test_clustered
     simple_test_clustered_max_cap

@@ -56,7 +56,122 @@ using ord::getTritonCts;
   };
 }
 
+// Enum: CtsOptions::SfcOptimizer
+%typemap(typecheck) CtsOptions::SfcOptimizer {
+  char *str = Tcl_GetStringFromObj($input, 0);
+  if (strcasecmp(str, "GREEDY") == 0) {
+    $1 = 1;
+  } else if (strcasecmp(str, "DP_RP") == 0) {
+    $1 = 1;
+  } else {
+    $1 = 0;
+  }
+}
+
+%typemap(in) CtsOptions::SfcOptimizer {
+  char *str = Tcl_GetStringFromObj($input, 0);
+  if (strcasecmp(str, "DP_RP") == 0) {
+    $1 = CtsOptions::SfcOptimizer::DP_RP;
+  } else {
+    $1 = CtsOptions::SfcOptimizer::GREEDY;
+  };
+}
+
+// Enum: CtsOptions::SfcCost
+%typemap(typecheck) CtsOptions::SfcCost {
+  char *str = Tcl_GetStringFromObj($input, 0);
+  if (strcasecmp(str, "DIAMETER") == 0) {
+    $1 = 1;
+  } else if (strcasecmp(str, "RADIUS") == 0) {
+    $1 = 1;
+  } else {
+    $1 = 0;
+  }
+}
+
+%typemap(in) CtsOptions::SfcCost {
+  char *str = Tcl_GetStringFromObj($input, 0);
+  if (strcasecmp(str, "RADIUS") == 0) {
+    $1 = CtsOptions::SfcCost::RADIUS;
+  } else {
+    $1 = CtsOptions::SfcCost::DIAMETER;
+  };
+}
+
 %inline %{
+
+void
+set_sfc_optimizer(CtsOptions::SfcOptimizer opt)
+{
+  getTritonCts()->getParms()->setSfcOptimizer(opt);
+}
+
+const char *
+get_sfc_optimizer()
+{
+  return getTritonCts()->getParms()->getSfcOptimizerName();
+}
+
+void
+reset_sfc_optimizer()
+{
+  getTritonCts()->getParms()->resetSfcOptimizer();
+}
+
+void
+set_sfc_cost(CtsOptions::SfcCost cost)
+{
+  getTritonCts()->getParms()->setSfcCost(cost);
+}
+
+const char *
+get_sfc_cost()
+{
+  return getTritonCts()->getParms()->getSfcCostName();
+}
+
+void
+reset_sfc_cost()
+{
+  getTritonCts()->getParms()->resetSfcCost();
+}
+
+void
+set_sfc_balance(double w)
+{
+  getTritonCts()->getParms()->setSfcBalance(w);
+}
+
+void
+reset_sfc_balance()
+{
+  getTritonCts()->getParms()->resetSfcBalance();
+}
+
+void
+set_sfc_3opt(bool enable)
+{
+  getTritonCts()->getParms()->setSfc3Opt(enable);
+}
+
+void
+reset_sfc_3opt()
+{
+  getTritonCts()->getParms()->resetSfc3Opt();
+}
+
+void
+set_sfc_refine(bool enable)
+{
+  getTritonCts()->getParms()->setSfcRefine(enable);
+}
+
+void
+reset_sfc_refine()
+{
+  getTritonCts()->getParms()->resetSfcRefine();
+}
+
 
 void
 set_sink_clustering(bool enable)

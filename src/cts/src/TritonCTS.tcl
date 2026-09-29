@@ -51,6 +51,11 @@ sta::define_cmd_args "set_cts_config" {[-apply_ndr strategy] \
                                        [-num_static_layers] \
 				       [-root_buf] \
                                        [-sink_buffer_max_cap_derate] \
+                                       [-sfc_3opt] \
+                                       [-sfc_balance weight] \
+                                       [-sfc_cost cost] \
+                                       [-sfc_optimizer optimizer] \
+                                       [-sfc_refine] \
                                        [-sink_clustering_levels levels] \
                                        [-sink_clustering_max_diameter] \
                                        [-sink_clustering_size] \
@@ -66,8 +71,9 @@ proc set_cts_config { args } {
            -clustering_unbalance_ratio -delay_buffer_derate -distance_between_buffers \
            -library -macro_clustering_max_diameter -macro_clustering_size \
            -num_static_layers -sink_buffer_max_cap_derate -sink_clustering_levels -root_buf \
+           -sfc_balance -sfc_cost -sfc_optimizer \
            -sink_clustering_max_diameter -sink_clustering_size -skip_nets -tree_buf -wire_unit} \
-    flags {}
+    flags {-sfc_3opt -sfc_refine}
 
   sta::check_argc_eq0 "set_cts_config" $args
 
@@ -155,6 +161,21 @@ proc set_cts_config { args } {
   if { [info exists keys(-sink_clustering_max_diameter)] } {
     set distance $keys(-sink_clustering_max_diameter)
     cts::set_clustering_diameter $distance
+  }
+  if { [info exists keys(-sfc_optimizer)] } {
+    cts::set_sfc_optimizer $keys(-sfc_optimizer)
+  }
+  if { [info exists keys(-sfc_cost)] } {
+    cts::set_sfc_cost $keys(-sfc_cost)
+  }
+  if { [info exists keys(-sfc_balance)] } {
+    cts::set_sfc_balance $keys(-sfc_balance)
+  }
+  if { [info exists flags(-sfc_3opt)] } {
+    cts::set_sfc_3opt 1
+  }
+  if { [info exists flags(-sfc_refine)] } {
+    cts::set_sfc_refine 1
   }
   if { [info exists keys(-sink_clustering_size)] } {
     set size $keys(-sink_clustering_size)
@@ -276,6 +297,11 @@ sta::define_cmd_args "reset_cts_config" {[-apply_ndr] \
                                          [-num_static_layers] \
 					 [-root_buf] \
                                          [-sink_buffer_max_cap_derate] \
+                                         [-sfc_3opt] \
+                                         [-sfc_balance] \
+                                         [-sfc_cost] \
+                                         [-sfc_optimizer] \
+                                         [-sfc_refine] \
                                          [-sink_clustering_levels] \
                                          [-sink_clustering_max_diameter] \
                                          [-sink_clustering_size] \
@@ -292,6 +318,7 @@ proc reset_cts_config { args } {
            -clustering_unbalance_ratio -delay_buffer_derate -distance_between_buffers \
            -library -macro_clustering_max_diameter -macro_clustering_size \
            -num_static_layers -root_buf -sink_buffer_max_cap_derate -sink_clustering_levels \
+           -sfc_3opt -sfc_balance -sfc_cost -sfc_optimizer -sfc_refine \
            -sink_clustering_max_diameter -sink_clustering_size -skip_nets -tree_buf -wire_unit}
 
   set reset_all [expr { [array size flags] == 0 }]
@@ -362,6 +389,26 @@ proc reset_cts_config { args } {
     cts::reset_clustering_diameter
     utl::info CTS 225 "Sink clustering max diameter has been removed."
   }
+  if { $reset_all || [info exists flags(-sfc_optimizer)] } {
+    cts::reset_sfc_optimizer
+    utl::info CTS 252 "Sink clustering optimizer has been removed."
+  }
+  if { $reset_all || [info exists flags(-sfc_balance)] } {
+    cts::reset_sfc_balance
+    utl::info CTS 268 "Sink clustering balance weight has been removed."
+  }
+  if { $reset_all || [info exists flags(-sfc_cost)] } {
+    cts::reset_sfc_cost
+    utl::info CTS 253 "Sink clustering cost has been removed."
+  }
+  if { $reset_all || [info exists flags(-sfc_3opt)] } {
+    cts::reset_sfc_3opt
+    utl::info CTS 254 "Sink clustering tour improvement has been removed."
+  }
+  if { $reset_all || [info exists flags(-sfc_refine)] } {
+    cts::reset_sfc_refine
+    utl::info CTS 255 "Sink clustering local refinement has been removed."
+  }
   if { $reset_all || [info exists flags(-sink_clustering_size)] } {
     cts::reset_sink_clustering_size
     utl::info CTS 226 "Sink clustering size has been removed."
@@ -389,6 +436,11 @@ sta::define_cmd_args "clock_tree_synthesis" {[-wire_unit unit]
                                              [-branching_point_buffers_distance] \
                                              [-clustering_exponent] \
                                              [-clustering_unbalance_ratio] \
+                                             [-sfc_3opt] \
+                                             [-sfc_balance weight] \
+                                             [-sfc_cost cost] \
+                                             [-sfc_optimizer optimizer] \
+                                             [-sfc_refine] \
                                              [-sink_clustering_size] \
                                              [-sink_clustering_max_diameter] \
                                              [-macro_clustering_size] \
@@ -412,6 +464,7 @@ sta::define_cmd_args "clock_tree_synthesis" {[-wire_unit unit]
 proc clock_tree_synthesis { args } {
   sta::parse_key_args "clock_tree_synthesis" args \
     keys {-root_buf -buf_list -wire_unit -clk_nets -sink_clustering_size \
+          -sfc_balance -sfc_cost -sfc_optimizer \
           -num_static_layers -sink_clustering_buffer \
           -distance_between_buffers -branching_point_buffers_distance \
           -clustering_exponent \
@@ -421,6 +474,7 @@ proc clock_tree_synthesis { args } {
           -apply_ndr \
           -sink_buffer_max_cap_derate -delay_buffer_derate -library} \
     flags {-post_cts_disable -sink_clustering_enable -balance_levels \
+           -sfc_3opt -sfc_refine \
            -obstruction_aware -no_obstruction_aware \
            -dont_use_dummy_load -repair_clock_nets -no_insertion_delay
   }
@@ -438,6 +492,21 @@ proc clock_tree_synthesis { args } {
 
   cts::set_sink_clustering [info exists flags(-sink_clustering_enable)]
 
+  if { [info exists keys(-sfc_optimizer)] } {
+    cts::set_sfc_optimizer $keys(-sfc_optimizer)
+  }
+  if { [info exists keys(-sfc_cost)] } {
+    cts::set_sfc_cost $keys(-sfc_cost)
+  }
+  if { [info exists keys(-sfc_balance)] } {
+    cts::set_sfc_balance $keys(-sfc_balance)
+  }
+  if { [info exists flags(-sfc_3opt)] } {
+    cts::set_sfc_3opt 1
+  }
+  if { [info exists flags(-sfc_refine)] } {
+    cts::set_sfc_refine 1
+  }
   if { [info exists keys(-sink_clustering_size)] } {
     set size $keys(-sink_clustering_size)
     cts::set_sink_clustering_size $size

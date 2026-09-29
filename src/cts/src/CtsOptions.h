@@ -36,6 +36,20 @@ class CtsOptions : public odb::dbBlockCallBackObj
     FULL
   };
 
+  enum class SfcOptimizer
+  {
+    GREEDY,  // the sweep OpenROAD has always used
+    DP_RP    // optimal segmentation of the same order
+  };
+
+  // What a cluster costs when the segmentation and refinement compare
+  // alternatives.
+  enum class SfcCost
+  {
+    DIAMETER,  // largest pairwise Manhattan distance
+    RADIUS     // largest distance from the leaf buffer location
+  };
+
   enum class MasterType
   {
     DUMMY,
@@ -338,6 +352,46 @@ class CtsOptions : public odb::dbBlockCallBackObj
     return "";
   }
 
+  double getSfcBalance() const { return sfcBalance_; }
+  void setSfcBalance(double w) { sfcBalance_ = w; }
+  void resetSfcBalance() { sfcBalance_ = 0.0; }
+
+  SfcOptimizer getSfcOptimizer() const { return sfcOptimizer_; }
+  void setSfcOptimizer(SfcOptimizer opt) { sfcOptimizer_ = opt; }
+  void resetSfcOptimizer() { sfcOptimizer_ = SfcOptimizer::GREEDY; }
+  const char* getSfcOptimizerName() const
+  {
+    switch (sfcOptimizer_) {
+      case SfcOptimizer::GREEDY:
+        return "greedy";
+      case SfcOptimizer::DP_RP:
+        return "dp_rp";
+    }
+    return "greedy";
+  }
+  SfcCost getSfcCost() const { return sfcCost_; }
+  void setSfcCost(SfcCost cost) { sfcCost_ = cost; }
+  void resetSfcCost() { sfcCost_ = SfcCost::DIAMETER; }
+  const char* getSfcCostName() const
+  {
+    switch (sfcCost_) {
+      case SfcCost::DIAMETER:
+        return "diameter";
+      case SfcCost::RADIUS:
+        return "radius";
+    }
+    return "diameter";
+  }
+  bool getSfc3Opt() const { return sfc3Opt_; }
+  void setSfc3Opt(bool enable) { sfc3Opt_ = enable; }
+  void resetSfc3Opt() { sfc3Opt_ = false; }
+  bool getSfcRefine() const { return sfcRefine_; }
+  void setSfcRefine(bool enable) { sfcRefine_ = enable; }
+  void resetSfcRefine() { sfcRefine_ = false; }
+  int getSfcRefinePasses() const { return sfcRefinePasses_; }
+  void setSfcRefinePasses(int passes) { sfcRefinePasses_ = passes; }
+  void resetSfcRefinePasses() { sfcRefinePasses_ = 5; }
+
  private:
   std::string clockNets_;
   std::string rootBuffer_;
@@ -377,6 +431,12 @@ class CtsOptions : public odb::dbBlockCallBackObj
   bool maxDiameterSet_ = false;
   unsigned sinkClustersSize_ = 30;
   bool sinkClustersSizeSet_ = false;
+  double sfcBalance_ = 0.0;
+  SfcOptimizer sfcOptimizer_ = SfcOptimizer::GREEDY;
+  SfcCost sfcCost_ = SfcCost::DIAMETER;
+  bool sfc3Opt_ = false;
+  bool sfcRefine_ = false;
+  int sfcRefinePasses_ = 5;
   double macroMaxDiameter_ = 50;
   bool macroMaxDiameterSet_ = false;
   unsigned macroSinkClustersSize_ = 4;

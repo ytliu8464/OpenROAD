@@ -10,6 +10,7 @@ add_library(cts_lib
     Clock.cpp
     TreeBuilder.cpp
     HTreeBuilder.cpp
+    ClusterRefine.cpp
     SinkClustering.cpp
     TechChar.cpp
     TritonCTS.cpp
