@@ -82,23 +82,6 @@ make DESIGN_CONFIG=./designs/nangate45/jpeg/config.mk
 `set_debug_level CTS clustering 1` prints the accepted 3-Opt moves, the
 DP-versus-greedy cost, and the refinement moves.
 
-## Measured effect
-
-Three designs, default ORFS flow versus the recommended combination, same
-placement, post-detailed-route with OpenRCX extraction:
-
-| Design | Clock skew | Clock wirelength | Setup TNS | CTS runtime cost |
-|---|---|---|---|---|
-| nangate45/jpeg | −10.7% | −8.5% | −9.5% (−59.8 → −54.1 ns) | +0.3 s |
-| asap7/jpeg | −5.4% | −5.0% | 0 → 0 | +0.1 s |
-| nangate45/ariane136 | +4.7% | −4.8% | 0 → 0 | +1.5 s |
-
-Clock wirelength improves on every design. Skew improves on two and regresses
-on ariane136, a large design with two interleaved clock trees. The balance term
-is what makes the result safe: without it, nangate45/jpeg regresses 26% on skew
-because the DP objective has no fanout term and leaves some clusters heavily
-loaded. Every number is a single placement seed.
-
 ## Notes
 
 - Options default off, so the branch is drop-in safe for existing flows.
