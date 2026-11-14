@@ -531,7 +531,8 @@ int NesterovPlace::doNesterovPlace(int start_iter)
           int ret = std::system(cmd.c_str());
           if (ret != 0) {
             log_->report("mlbuf_infer.py failed with code {}", ret);
-          } 
+            exit(1);
+          }
         } else if (buffer_approach == std::string("Adhoc")) {
             log_->report("[INFO] Adhoc baseline is used");
             const std::string prob_net = envOr("INPUT", ""); // save all problematic nets
