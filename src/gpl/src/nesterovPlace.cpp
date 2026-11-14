@@ -478,16 +478,17 @@ int NesterovPlace::doNesterovPlace(int start_iter)
       auto block = pbc_->db()->getChip()->getBlock();
       // -----------------------------------------------------
       // update since 2025/04/13 MLBuf integration
-      // fix_MLBuf_20261023: null-safe environment reads, selectable net
-      // weighting (MLBUF_NETWEIGHT=1 keeps OpenROAD's slack-based weights),
-      // selectable reservation source (BUF_APPROACH = none|rsz|MLBuf|Adhoc),
-      // micron->DBU conversion of python-side boxes, core clipping, a target
-      // density guard (MLBUF_MAX_DENSITY) and one log line per trigger.
+      // Environment controls (all optional):
+      //   BUF_APPROACH      reservation source: none (default) | rsz | MLBuf | Adhoc
+      //   MLBUF_NETWEIGHT   1 (default) keeps OpenROAD's slack-based net weights,
+      //                     0 disables net weighting
+      //   MLBUF_MAX_DENSITY upper bound of the target density after reservation
+      //   MLBUF_PYTHON      python interpreter of the inference hook
       auto envOr = [](const char* k, const char* d) {
         const char* v = std::getenv(k);
         return std::string((v != nullptr && v[0] != '\0') ? v : d);
       };
-      const bool use_net_weights = envOr("MLBUF_NETWEIGHT", "0") == "1";
+      const bool use_net_weights = envOr("MLBUF_NETWEIGHT", "1") == "1";
       std::string buffer_approach = envOr("BUF_APPROACH", "none");
       const bool do_reserve = (buffer_approach != "none");
       bool shouldTdProceed = true;
@@ -561,9 +562,9 @@ int NesterovPlace::doNesterovPlace(int start_iter)
         }
         const size_t boxes_read = bufferList.size();
 
-        // fix_MLBuf_20261023: MLBuf/Adhoc boxes are written in microns, rsz boxes
-        // in DBU. Convert to DBU, clip to the core, drop empty boxes and recompute
-        // the area from the clipped DBU box (the CSV area column is not trusted).
+        // MLBuf / Adhoc boxes are written in microns, rsz boxes in DBU.
+        // Convert to DBU, clip to the core, drop empty boxes and recompute
+        // the area from the clipped DBU box (the CSV area column is not used).
         {
           const double dbu = (buffer_approach == "rsz")
                                  ? 1.0
@@ -601,8 +602,8 @@ int NesterovPlace::doNesterovPlace(int start_iter)
               const double white = static_cast<double>(nesterov->whiteSpaceArea());
               const float density_before = nesterov->targetDensity();
               double new_density = (buf_total_area + insts + filler) / white;
-              // fix_MLBuf_20261023: guard. Scale the reservation about the box
-              // centres so the target density never exceeds MLBUF_MAX_DENSITY.
+              // Scale the reservation about the box centres so that the
+              // target density never exceeds MLBUF_MAX_DENSITY.
               if (new_density > max_density && buf_total_area > 0.0) {
                 const double allowed = max_density * white - insts - filler;
                 const double scale = std::max(0.0, allowed / static_cast<double>(buf_total_area));

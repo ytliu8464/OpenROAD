@@ -2552,7 +2552,7 @@ void RepairDesign::makeRepeater_update(const char* reason,
   int uy = y + buf_height;
   int buf_area = buf_width * buf_height;
 
-  // fix_MLBuf_20261023: null-safe environment reads (rsz boxes are written in DBU)
+  // rsz boxes are written in DBU; skip when BUF_APPROACH or OUTPUT is unset
   const char* buf_approach_env = std::getenv("BUF_APPROACH");
   std::string buf_approach = buf_approach_env ? buf_approach_env : "";
   if (buf_approach == "rsz" && std::getenv("OUTPUT") != nullptr){
