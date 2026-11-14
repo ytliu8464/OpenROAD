@@ -35,6 +35,8 @@
 
 #include "nesterovPlace.h"
 
+#include <algorithm>
+#include <cmath>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
@@ -476,44 +478,53 @@ int NesterovPlace::doNesterovPlace(int start_iter)
       auto block = pbc_->db()->getChip()->getBlock();
       // -----------------------------------------------------
       // update since 2025/04/13 MLBuf integration
-      bool shouldTdProceed = true; 
+      // fix_MLBuf_20261023: null-safe environment reads, selectable net
+      // weighting (MLBUF_NETWEIGHT=1 keeps OpenROAD's slack-based weights),
+      // selectable reservation source (BUF_APPROACH = none|rsz|MLBuf|Adhoc),
+      // micron->DBU conversion of python-side boxes, core clipping, a target
+      // density guard (MLBUF_MAX_DENSITY) and one log line per trigger.
+      auto envOr = [](const char* k, const char* d) {
+        const char* v = std::getenv(k);
+        return std::string((v != nullptr && v[0] != '\0') ? v : d);
+      };
+      const bool use_net_weights = envOr("MLBUF_NETWEIGHT", "0") == "1";
+      std::string buffer_approach = envOr("BUF_APPROACH", "none");
+      const bool do_reserve = (buffer_approach != "none");
+      bool shouldTdProceed = true;
       bool mlbuf_integration_flag = true;
-      log_->report("[INFO] mlbuf_integration_flag = {}", mlbuf_integration_flag);
-      if (mlbuf_integration_flag) {
-        log_->report("[INFO] MLBuf intergration Starts ....");  
+      log_->report("[INFO] mlbuf_integration_flag = {} net_weights = {} reservation = {}",
+                   mlbuf_integration_flag, use_net_weights, buffer_approach);
+      if (use_net_weights) {
+        shouldTdProceed = tb_->updateGNetWeights(virtual_td_iter);
+      } else {
+        log_->report("[INFO] MLBuf intergration Starts ....");
         // Do not update net weights in MLBuf mode, only consider the buffer area effect
-        bool shouldTdProceed = tb_->updateGNetWeights_update(virtual_td_iter); 
-      }
-      else {
-        bool shouldTdProceed = tb_->updateGNetWeights(virtual_td_iter); 
+        shouldTdProceed = tb_->updateGNetWeights_update(virtual_td_iter);
       }
 
-      if (mlbuf_integration_flag && virtual_td_iter) {
+      if (mlbuf_integration_flag && virtual_td_iter && do_reserve) {
         // Call MLBuf / adhoc baseline here to process all problematic nets
-        std::string buf_approach = std::getenv("BUF_APPROACH");
-        const std::string default_approach = "rsz";
-        std::string buffer_approach = (buf_approach.size() != 0) ? std::string(buf_approach) : default_approach;
         std::cout << "Buffer approach: " << buffer_approach << std::endl;
         if (buffer_approach == std::string("MLBuf")) {
-          std::string model_pt = std::getenv("MODEL");
+          std::string model_pt = envOr("MODEL", "");
           std::cout << "[INFO] model_pt = " << model_pt << std::endl;
-          std::string prob_net = std::getenv("INPUT"); // save all problematic nets
+          std::string prob_net = envOr("INPUT", ""); // save all problematic nets
           std::cout << "[INFO] prob_net = " << prob_net << std::endl;
-          std::string output_file = std::getenv("OUTPUT");
+          std::string output_file = envOr("OUTPUT", "");
           std::cout << "[INFO] output_file = " << output_file << std::endl;
-          std::string mlbuf_code_path = std::getenv("PATHMLBUF");
+          std::string mlbuf_code_path = envOr("PATHMLBUF", "");
           std::cout << "[INFO] mlbuf_code_path = " << mlbuf_code_path << std::endl;
-          std::string env_cluster = std::getenv("CLUSTERNUM");
+          std::string env_cluster = envOr("CLUSTERNUM", "20");
           std::cout << "[INFO] env_cluster = " << env_cluster << std::endl;
-          
+
           log_->report("[INFO] MLBuf is used");
-          std::string cmd = "python " + mlbuf_code_path + "/mlbuf_infer.py "; 
-          cmd += "--model "+ model_pt + " "; 
-          cmd += "--input "+ prob_net + " "; 
+          std::string cmd = envOr("MLBUF_PYTHON", "python") + " " + mlbuf_code_path + "/mlbuf_infer.py ";
+          cmd += "--model "+ model_pt + " ";
+          cmd += "--input "+ prob_net + " ";
           cmd += "--output "+ output_file + " ";
           cmd += "--clusterNum " + env_cluster + " ";
           cmd += "--pathMLBuf " + mlbuf_code_path + " ";
-          cmd += "--cudaID " + std::string(std::getenv("CUDAID")) + " ";
+          cmd += "--cudaID " + envOr("CUDAID", "0") + " ";
 
           std::cout << "[INFO] cmd = " << cmd << std::endl;
           int ret = std::system(cmd.c_str());
@@ -522,10 +533,10 @@ int NesterovPlace::doNesterovPlace(int start_iter)
           } 
         } else if (buffer_approach == std::string("Adhoc")) {
             log_->report("[INFO] Adhoc baseline is used");
-            const std::string prob_net = std::getenv("INPUT"); // save all problematic nets
-            std::string output_file = std::getenv("OUTPUT");
-            std::string code_path = std::getenv("PATHMLBUF");
-            std::string cmd = "python " + code_path + "/adhoc_baseline.py "; 
+            const std::string prob_net = envOr("INPUT", ""); // save all problematic nets
+            std::string output_file = envOr("OUTPUT", "");
+            std::string code_path = envOr("PATHMLBUF", "");
+            std::string cmd = envOr("MLBUF_PYTHON", "python") + " " + code_path + "/adhoc_baseline.py ";
             cmd += "--input " + prob_net + " "; 
             cmd += "--pathMLBuf " + code_path + " ";
             cmd += "--output " + output_file;
@@ -541,16 +552,40 @@ int NesterovPlace::doNesterovPlace(int start_iter)
         
         // Now we have a list of buffers with buffer location and buffer sizes
         // (1) Read from user-specified CSV
-        std::string bufferCSV = std::getenv("OUTPUT");  
+        std::string bufferCSV = envOr("OUTPUT", "");
         std::vector<BufferBox> bufferList;
         if (!loadBufferBoxesFromCSV(bufferCSV, bufferList)) {
-          log_->report("[ERROR] Failed to read buffer boxes from ", bufferCSV.c_str()); 
-
+          log_->report("[ERROR] Failed to read buffer boxes from {}", bufferCSV);
         } else {
-          log_->report("[INFO] Successfully loaded buffers from CSV");
+          log_->report("[INFO] Successfully loaded {} buffers from CSV", bufferList.size());
         }
-        
-        // (2) Compute total area 
+        const size_t boxes_read = bufferList.size();
+
+        // fix_MLBuf_20261023: MLBuf/Adhoc boxes are written in microns, rsz boxes
+        // in DBU. Convert to DBU, clip to the core, drop empty boxes and recompute
+        // the area from the clipped DBU box (the CSV area column is not trusted).
+        {
+          const double dbu = (buffer_approach == "rsz")
+                                 ? 1.0
+                                 : static_cast<double>(block->getDbUnitsPerMicron());
+          const double clx = pbc_->die().coreLx(), cly = pbc_->die().coreLy();
+          const double cux = pbc_->die().coreUx(), cuy = pbc_->die().coreUy();
+          std::vector<BufferBox> clipped;
+          clipped.reserve(bufferList.size());
+          for (const auto& b : bufferList) {
+            const double lx = std::max(clx, b.lx() * dbu), ly = std::max(cly, b.ly() * dbu);
+            const double ux = std::min(cux, b.ux() * dbu), uy = std::min(cuy, b.uy() * dbu);
+            if (ux - lx < 1.0 || uy - ly < 1.0) {
+              continue;
+            }
+            clipped.emplace_back(static_cast<float>(lx), static_cast<float>(ly),
+                                 static_cast<float>(ux), static_cast<float>(uy),
+                                 static_cast<float>((ux - lx) * (uy - ly)));
+          }
+          bufferList.swap(clipped);
+        }
+
+        // (2) Compute total area (DBU^2)
         float buf_total_area = computeTotalBufferArea(bufferList);
 
         // (3) Integration manner: bin 
@@ -559,19 +594,46 @@ int NesterovPlace::doNesterovPlace(int start_iter)
         std::string mlbuf_integration_manner = (mlbuf_integration != nullptr) ? std::string(mlbuf_integration) : default_manner;
         if (mlbuf_integration_manner == "bin") {
           log_->report("[INFO] Integration manner: reduce bin capacity");
+            const double max_density = std::stod(envOr("MLBUF_MAX_DENSITY", "1.0"));
             for (auto& nesterov : nbVec_) {
-              nesterov->setTargetDensity(
-                static_cast<float>(buf_total_area
-                                  + nesterov->nesterovInstsArea()
-                                  + nesterov->totalFillerArea())
-                / static_cast<float>(nesterov->whiteSpaceArea()));
-              nesterov->updateDensityCenterCurSLP_update(mlbuf_integration_flag, bufferList); 
-              nesterov->updateDensityForceBin(); 
-              // nbc_->resetDeltaArea();
-              // nesterov->updateAreas();
-              // nesterov->updateDensitySize();
+              const double insts = static_cast<double>(nesterov->nesterovInstsArea());
+              const double filler = static_cast<double>(nesterov->totalFillerArea());
+              const double white = static_cast<double>(nesterov->whiteSpaceArea());
+              const float density_before = nesterov->targetDensity();
+              double new_density = (buf_total_area + insts + filler) / white;
+              // fix_MLBuf_20261023: guard. Scale the reservation about the box
+              // centres so the target density never exceeds MLBUF_MAX_DENSITY.
+              if (new_density > max_density && buf_total_area > 0.0) {
+                const double allowed = max_density * white - insts - filler;
+                const double scale = std::max(0.0, allowed / static_cast<double>(buf_total_area));
+                const double s = std::sqrt(scale);
+                std::vector<BufferBox> scaled;
+                scaled.reserve(bufferList.size());
+                for (const auto& b : bufferList) {
+                  const double cx = 0.5 * (b.lx() + b.ux()), cy = 0.5 * (b.ly() + b.uy());
+                  const double hw = 0.5 * (b.ux() - b.lx()) * s, hh = 0.5 * (b.uy() - b.ly()) * s;
+                  if (2.0 * hw < 1.0 || 2.0 * hh < 1.0) {
+                    continue;
+                  }
+                  scaled.emplace_back(static_cast<float>(cx - hw), static_cast<float>(cy - hh),
+                                      static_cast<float>(cx + hw), static_cast<float>(cy + hh),
+                                      static_cast<float>(4.0 * hw * hh));
+                }
+                bufferList.swap(scaled);
+                buf_total_area = computeTotalBufferArea(bufferList);
+                new_density = (buf_total_area + insts + filler) / white;
+                log_->report("[MLBUF] budget guard: reservation scaled by {:.4f} so that target density <= {:.3f}",
+                             scale, max_density);
+              }
+              log_->report("[MLBUF] trigger {}: approach {} boxes read {} kept {} reserved {:.1f} um^2 ({:.3f}% of whitespace) target density {:.4f} -> {:.4f}",
+                           npVars_.timingDrivenIterCounter, buffer_approach, boxes_read, bufferList.size(),
+                           block->dbuAreaToMicrons(static_cast<int64_t>(buf_total_area)),
+                           100.0 * buf_total_area / white, density_before, new_density);
+              nesterov->setTargetDensity(static_cast<float>(new_density));
+              nesterov->updateDensityCenterCurSLP_update(mlbuf_integration_flag, bufferList);
+              nesterov->updateDensityForceBin();
             }
-        } 
+        }
         else {
           log_->report("[ERROR] Invalid integration manner: %s", mlbuf_integration_manner.c_str());
           log_->report("[ERROR] Please set the environment variable 'Integration Manner' to 'bin' or 'cell'");
@@ -580,8 +642,7 @@ int NesterovPlace::doNesterovPlace(int start_iter)
         // clean
         std::ofstream ofs(bufferCSV, std::ios::trunc);
         if (!ofs) {
-            std::cerr << "Failed to open bufferCSV.\n";
-            return 1;
+            log_->report("[MLBUF] warning: could not truncate {}", bufferCSV);
         }
         std::cout << "File contents (bufferCSV, predicted buffers) cleared successfully.\n";
         ofs.close();
