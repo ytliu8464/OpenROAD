@@ -3486,19 +3486,22 @@ int RepairDesign::countNodes(const BufferedTreeNodePtr& node)
 
 // YL: for MLBuf Integration
 void RepairDesign::saveProbNets() {
-  if (buffered_trees_prob_.size() > 0) {
-    bool buffered_tree_print_flag = false;
-    const char* buf_approach = std::getenv("BUF_APPROACH");
-    const std::string default_approach = "rsz";
-    std::string buffer_approach = (buf_approach != nullptr) ? std::string(buf_approach) : default_approach;
-
-    if (buffer_approach == "MLBuf" || buffer_approach == "Adhoc") {
-      std::string prob_net_file = std::getenv("INPUT"); // save problematic nets
-      printTreeToCSV(buffered_trees_prob_, prob_net_file, buffered_tree_print_flag);
-      std::cout << "buffered_trees_prob_ saved to " << prob_net_file << std::endl;
-    } 
-    
+  const char* buf_approach = std::getenv("BUF_APPROACH");
+  const std::string buffer_approach = (buf_approach != nullptr) ? std::string(buf_approach) : "rsz";
+  if (buffer_approach != "MLBuf" && buffer_approach != "Adhoc") {
+    return;
   }
+  const char* prob_net_file = std::getenv("INPUT"); // problem nets handed to the inference hook
+  if (prob_net_file == nullptr || prob_net_file[0] == '\0') {
+    std::cout << "[MLBUF] INPUT is not set; problem nets not saved" << std::endl;
+    return;
+  }
+  // Always (re)write the file, header-only when this trigger has no problem nets, so that the hook never
+  // reads the previous trigger's nets and never finds the file missing.
+  const bool buffered_tree_print_flag = false;
+  printTreeToCSV(buffered_trees_prob_, std::string(prob_net_file), buffered_tree_print_flag);
+  std::cout << "buffered_trees_prob_ (" << buffered_trees_prob_.size() << " nets) saved to " << prob_net_file
+            << std::endl;
 }
 
 // save
